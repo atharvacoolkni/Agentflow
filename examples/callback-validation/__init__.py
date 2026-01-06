@@ -1,1 +1,0 @@
-"""TAF Callback Validation Examples."""
