@@ -125,7 +125,7 @@ class Agent(BaseAgent):
             ```python
             # Text generation (default - no need to specify output_type)
             text_agent = Agent(
-                model="gpt-4o",
+                model="openai/gpt-4o",
                 system_prompt="You are a helpful assistant",
                 tools=[weather_tool, calculator],
                 temperature=0.8,
@@ -133,25 +133,25 @@ class Agent(BaseAgent):
 
             # Image generation (explicit)
             image_agent = Agent(
-                model="dall-e-3",
+                model="openai/dall-e-3",
                 output_type="image",
             )
 
             # Video generation (explicit)
             video_agent = Agent(
-                model="veo-2.0",
+                model="google/veo-2.0",
                 provider="google",
                 output_type="video",
             )
 
             # Multi-modal workflow (Google ADK style)
             prompt_agent = Agent(
-                model="gemini-2.0-flash-exp",
+                model="google/gemini-2.0-flash-exp",
                 system_prompt="Generate detailed image prompts",
             )
 
             imagen_agent = Agent(
-                model="imagen-3.0-generate-001",
+                model="google/imagen-3.0-generate-001",
                 output_type="image",
             )
 
