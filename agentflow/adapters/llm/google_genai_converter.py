@@ -142,7 +142,7 @@ class GoogleGenAIConverter(BaseConverter):
             if reasoning:
                 reasoning_content = reasoning
                 continue
-            
+
             self._process_text_part(part, blocks)
             self._process_function_call_part(part, blocks, tools_calls)
             self._process_inline_media_part(part, blocks)
@@ -156,8 +156,7 @@ class GoogleGenAIConverter(BaseConverter):
             blocks.append(TextBlock(text=part.text))
 
     def _process_reasoning_part(self, part: Any, blocks: list) -> str:
-        """Process reasoning (thought) part.
-        """
+        """Process reasoning (thought) part."""
         if hasattr(part, "thought") and part.thought:
             # When part.thought is True, the actual content is in part.text
             thought_content = part.text if hasattr(part, "text") else ""

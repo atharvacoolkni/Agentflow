@@ -175,7 +175,7 @@ class Agent(BaseAgent):
         # check user sending model and provider as prefix, if provider is not explicitly provided
         if "/" in model:
             provider, model = model.split("/", 1)
-            self.model=model
+            self.model = model
 
         # Store output type
         self.output_type = output_type.lower()
@@ -527,9 +527,7 @@ class Agent(BaseAgent):
 
         # This allows the model to return reasoning content as part of the response
         if self.output_type == "text":
-            config_kwargs["thinking_config"] = types.ThinkingConfig(
-                include_thoughts=True
-            )
+            config_kwargs["thinking_config"] = types.ThinkingConfig(include_thoughts=True)
 
         return types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
 
