@@ -138,10 +138,11 @@ class OpenAIConverter(BaseConverter):
 
         # Build content blocks
         blocks = []
-        if content:
-            blocks.append(TextBlock(text=content))
+        # Add reasoning block first for consistency with processing order
         if reasoning_content:
             blocks.append(ReasoningBlock(summary=reasoning_content))
+        if content:
+            blocks.append(TextBlock(text=content))
 
         # Extract audio if present
         if audio_data:

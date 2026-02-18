@@ -72,12 +72,13 @@ class MockUsageMetadata:
     """Mock UsageMetadata for testing."""
 
     def __init__(
-        self, candidates_token_count=0, prompt_token_count=0, total_token_count=0
+        self, candidates_token_count=0, prompt_token_count=0, total_token_count=0, thoughts_token_count=0
     ):
         self.candidates_token_count = candidates_token_count
         self.prompt_token_count = prompt_token_count
         self.total_token_count = total_token_count
         self.cached_content_token_count = 0
+        self.thoughts_token_count = thoughts_token_count
 
 
 class MockGenerateContentResponse:
@@ -142,7 +143,13 @@ class TestGoogleGenAIConverter:
         thought_part = MockPart(text="I need to think deeply about this question", thought=True)
         content = MockContent(parts=[text_part, thought_part])
         candidate = MockCandidate(content=content)
-        response = MockGenerateContentResponse(candidates=[candidate])
+        usage = MockUsageMetadata(
+            candidates_token_count=5,
+            prompt_token_count=3,
+            total_token_count=8,
+            thoughts_token_count=12
+        )
+        response = MockGenerateContentResponse(candidates=[candidate], usage_metadata=usage)
 
         # Convert response
         message = await converter.convert_response(response)
@@ -153,6 +160,11 @@ class TestGoogleGenAIConverter:
         assert isinstance(message.content[1], ReasoningBlock)
         assert message.content[1].summary == "I need to think deeply about this question"
         assert message.reasoning == "I need to think deeply about this question"
+        # Verify token usage including reasoning tokens
+        assert message.usages.completion_tokens == 5
+        assert message.usages.prompt_tokens == 3
+        assert message.usages.total_tokens == 8
+        assert message.usages.reasoning_tokens == 12
 
     @pytest.mark.asyncio
     async def test_convert_response_with_function_call(self, converter):
