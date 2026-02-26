@@ -400,12 +400,14 @@ class InvokeNodeHandler(BaseLoggingMixin):
         self,
         state: "AgentState",
         config: dict[str, Any],
+        callback_mgr: CallbackManager,
     ) -> dict[str, Any]:
-        """Execute an Agent instance node.
+        """Execute an Agent instance node with callback hooks and event publishing.
 
         Args:
             state (AgentState): Current agent state.
             config (dict): Node configuration.
+            callback_mgr (CallbackManager): Callback manager for hooks.
 
         Returns:
             dict: Result containing new state, messages, and next node.
@@ -414,21 +416,102 @@ class InvokeNodeHandler(BaseLoggingMixin):
 
         agent = self.func  # type: ignore - func is Agent instance here
 
-        # Execute the agent's logic
-        converter = await agent.execute(state, config)  # type: ignore
+        # Create callback context for AI invocation
+        context = CallbackContext(
+            invocation_type=InvocationType.AI,
+            node_name=self.name,
+            function_name=getattr(agent, "__class__", type(agent)).__name__,
+            metadata={"config": config},
+        )
 
-        # Process the converter result (invoke for non-streaming)
-        message = await converter.invoke()
+        input_data = {"state": state, "config": config}
 
-        # Update state with new message
-        new_state = state.model_copy(deep=True)
-        new_state.context.append(message)
+        last_message = state.context[-1] if state.context and len(state.context) > 0 else None
 
-        return {
-            "state": new_state,
-            "messages": [message],
-            "next_node": None,
-        }
+        event = EventModel.default(
+            config,
+            data={"state": state.model_dump()},
+            event=Event.NODE_EXECUTION,
+            content_type=[ContentType.STATE],
+            node_name=self.name,
+            extra={
+                "node": self.name,
+                "function_name": type(agent).__name__,
+                "last_message": last_message.model_dump() if last_message else None,
+            },
+        )
+        publish_event(event)
+
+        try:
+            # Execute before_invoke callbacks
+            input_data = await callback_mgr.execute_before_invoke(context, input_data)
+
+            event.event_type = EventType.PROGRESS
+            event.metadata["status"] = "Agent execution started"
+            publish_event(event)
+
+            # Execute the agent's logic
+            converter = await agent.execute(state, config)  # type: ignore
+
+            # Process the converter result (invoke for non-streaming)
+            message = await converter.invoke()
+
+            # Update state with new message
+            new_state = state.model_copy(deep=True)
+            new_state.context.append(message)
+
+            result = {
+                "state": new_state,
+                "messages": [message],
+                "next_node": None,
+            }
+
+            # Execute after_invoke callbacks
+            result = await callback_mgr.execute_after_invoke(context, input_data, result)
+
+            # Publish END event
+            messages = result.get("messages", [])
+            event.data["state"] = result["state"].model_dump()
+            event.event_type = EventType.END
+            event.metadata["status"] = "Agent execution completed"
+            event.data["messages"] = [m.model_dump() for m in messages] if messages else []
+            event.data["next_node"] = result.get("next_node")
+            if messages:
+                last = messages[-1]
+                event.content = last.text() if isinstance(last.content, list) else last.content
+                if isinstance(last.content, list):
+                    event.content_blocks = last.content
+            publish_event(event)
+
+            return result
+
+        except Exception as e:
+            logger.warning(
+                "Node '%s' agent execution failed, executing error callbacks: %s",
+                self.name,
+                e,
+            )
+            recovery_result = await callback_mgr.execute_on_error(context, input_data, e)
+
+            if recovery_result is not None:
+                logger.info("Node '%s' recovered from error using callback result", self.name)
+                event.event_type = EventType.END
+                event.metadata["status"] = "Agent execution recovered from error"
+                event.data["message"] = recovery_result.model_dump()
+                event.content_type = [ContentType.MESSAGE, ContentType.STATE]
+                publish_event(event)
+                return {
+                    "state": state,
+                    "messages": [recovery_result],
+                    "next_node": None,
+                }
+            logger.error("Node '%s' could not recover from error", self.name)
+            event.event_type = EventType.ERROR
+            event.metadata["status"] = f"Agent execution failed: {e}"
+            event.data["error"] = str(e)
+            event.content_type = [ContentType.ERROR, ContentType.STATE]
+            publish_event(event)
+            raise
 
     async def invoke(
         self,
@@ -469,6 +552,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
                 result = await self._call_agent_node(
                     state,
                     config,
+                    callback_mgr,
                 )
             elif isinstance(self.func, ToolNode):
                 logger.debug("Node '%s' is a ToolNode, executing tool calls", self.name)

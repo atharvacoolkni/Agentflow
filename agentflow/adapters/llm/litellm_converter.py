@@ -77,14 +77,15 @@ class LiteLLMConverter(BaseConverter):
         usages_data = data.get("usage", {})
 
         usages = TokenUsages(
-            completion_tokens=usages_data.get("completion_tokens", 0),
-            prompt_tokens=usages_data.get("prompt_tokens", 0),
-            total_tokens=usages_data.get("total_tokens", 0),
-            cache_creation_input_tokens=usages_data.get("cache_creation_input_tokens", 0),
-            cache_read_input_tokens=usages_data.get("cache_read_input_tokens", 0),
-            reasoning_tokens=usages_data.get("prompt_tokens_details", {}).get(
+            completion_tokens=usages_data.get("completion_tokens", 0) or 0,
+            prompt_tokens=usages_data.get("prompt_tokens", 0) or 0,
+            total_tokens=usages_data.get("total_tokens", 0) or 0,
+            cache_creation_input_tokens=usages_data.get("cache_creation_input_tokens", 0) or 0,
+            cache_read_input_tokens=usages_data.get("cache_read_input_tokens", 0) or 0,
+            reasoning_tokens=(usages_data.get("prompt_tokens_details") or {}).get(
                 "reasoning_tokens", 0
-            ),
+            )
+            or 0,
         )
 
         created_date = data.get("created", datetime.now().timestamp())

@@ -13,6 +13,7 @@ This module defines the core data structures for agent evaluation:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 from enum import Enum
 from typing import Any
 
@@ -29,14 +30,7 @@ class StepType(str, Enum):
 
 
 class ToolCall(BaseModel):
-    """Represents a tool call (expected or actual).
-
-    Attributes:
-        name: Name of the tool/function called.
-        args: Arguments passed to the tool.
-        call_id: Unique identifier for this tool call.
-        result: Optional result from the tool execution.
-    """
+    """Represents a tool call (expected or actual)."""
 
     name: str
     args: dict[str, Any] = Field(default_factory=dict)
@@ -49,21 +43,13 @@ class ToolCall(BaseModel):
         check_args: bool = True,
         check_call_id: bool = False,
     ) -> bool:
-        """Check if this tool call matches another.
-
-        Args:
-            other: The tool call to compare against.
-            check_args: Whether to compare arguments.
-            check_call_id: Whether to compare call IDs.
-
-        Returns:
-            True if the tool calls match based on the specified criteria.
-        """
         if self.name != other.name:
             return False
-        return not (check_args and self.args != other.args) and not (
-            check_call_id and self.call_id != other.call_id
-        )
+        # Only enforce args comparison when the *expected* spec (other) has args
+        # defined.  If other.args is empty it means "any args are acceptable".
+        if check_args and other.args and self.args != other.args:
+            return False
+        return not (check_call_id and self.call_id != other.call_id)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ToolCall):
@@ -72,15 +58,7 @@ class ToolCall(BaseModel):
 
 
 class TrajectoryStep(BaseModel):
-    """Single step in an execution trajectory.
-
-    Attributes:
-        step_type: Type of step (node, tool, message, conditional).
-        name: Name of the node, tool, or action.
-        args: Arguments if this is a tool call.
-        timestamp: When this step occurred.
-        metadata: Additional step-specific data.
-    """
+    """Single step in an execution trajectory."""
 
     step_type: StepType
     name: str
@@ -122,13 +100,7 @@ class TrajectoryStep(BaseModel):
 
 
 class MessageContent(BaseModel):
-    """Content of a message (simplified from full Message model).
-
-    Attributes:
-        role: The role of the message sender (user, assistant, tool).
-        content: The message content (text or structured blocks).
-        metadata: Additional message metadata.
-    """
+    """Content of a message (simplified from full Message model)."""
 
     role: str
     content: str | list[dict[str, Any]]
@@ -136,45 +108,32 @@ class MessageContent(BaseModel):
 
     @classmethod
     def user(cls, text: str) -> MessageContent:
-        """Create a user message."""
         return cls(role="user", content=text)
 
     @classmethod
     def assistant(cls, text: str) -> MessageContent:
-        """Create an assistant message."""
         return cls(role="assistant", content=text)
 
     def get_text(self) -> str:
-        """Extract text content from the message."""
         if isinstance(self.content, str):
             return self.content
-        # Handle list of content blocks
         texts = []
         for block in self.content:
             if isinstance(block, dict):
                 if "text" in block:
                     texts.append(block["text"])
-                elif "type" in block and block["type"] == "text":
+                elif block.get("type") == "text":
                     texts.append(block.get("text", ""))
         return " ".join(texts)
 
 
 class Invocation(BaseModel):
-    """A single turn in the conversation.
-
-    Represents one user query and the expected agent behavior in response.
-
-    Attributes:
-        invocation_id: Unique identifier for this invocation.
-        user_content: The user's input message.
-        expected_tool_trajectory: Expected sequence of tool calls.
-        expected_intermediate_responses: Expected intermediate agent responses.
-        expected_final_response: Expected final response from the agent.
-    """
+    """A single turn in the conversation."""
 
     invocation_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_content: MessageContent
     expected_tool_trajectory: list[ToolCall] = Field(default_factory=list)
+    expected_node_order: list[str] = Field(default_factory=list)
     expected_intermediate_responses: list[MessageContent] = Field(default_factory=list)
     expected_final_response: MessageContent | None = None
 
@@ -184,35 +143,20 @@ class Invocation(BaseModel):
         user_query: str,
         expected_response: str | None = None,
         expected_tools: list[ToolCall] | None = None,
+        expected_node_order: list[str] | None = None,
     ) -> Invocation:
-        """Create a simple invocation with minimal configuration.
-
-        Args:
-            user_query: The user's question or request.
-            expected_response: Expected agent response text.
-            expected_tools: Expected tool calls.
-
-        Returns:
-            Configured Invocation instance.
-        """
         return cls(
             user_content=MessageContent.user(user_query),
             expected_final_response=(
                 MessageContent.assistant(expected_response) if expected_response else None
             ),
             expected_tool_trajectory=expected_tools or [],
+            expected_node_order=expected_node_order or [],
         )
 
 
 class SessionInput(BaseModel):
-    """Initial session configuration for evaluation.
-
-    Attributes:
-        app_name: Name of the agent/application being tested.
-        user_id: User identifier for the session.
-        state: Initial state values.
-        config: Additional configuration for the session.
-    """
+    """Initial session configuration for evaluation."""
 
     app_name: str = ""
     user_id: str = "test_user"
@@ -221,20 +165,7 @@ class SessionInput(BaseModel):
 
 
 class EvalCase(BaseModel):
-    """A single evaluation case representing one test scenario.
-
-    An EvalCase contains a conversation (one or more invocations) and
-    the expected outcomes for each turn.
-
-    Attributes:
-        eval_id: Unique identifier for this evaluation case.
-        name: Human-readable name for this test case.
-        description: Description of what this test case validates.
-        conversation: List of invocations (turns) in the conversation.
-        session_input: Initial session configuration.
-        tags: Tags for categorizing/filtering test cases.
-        metadata: Additional test case metadata.
-    """
+    """A single evaluation case representing one test scenario."""
 
     eval_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
@@ -251,22 +182,11 @@ class EvalCase(BaseModel):
         user_query: str,
         expected_response: str | None = None,
         expected_tools: list[ToolCall] | None = None,
+        expected_node_order: list[str] | None = None,
         name: str = "",
         description: str = "",
     ) -> EvalCase:
-        """Create a single-turn evaluation case.
-
-        Args:
-            eval_id: Unique identifier for this case.
-            user_query: The user's input.
-            expected_response: Expected agent response.
-            expected_tools: Expected tool calls.
-            name: Human-readable name.
-            description: Description of the test.
-
-        Returns:
-            Configured EvalCase instance.
-        """
+        """Create a single-turn evaluation case."""
         return cls(
             eval_id=eval_id,
             name=name,
@@ -276,23 +196,66 @@ class EvalCase(BaseModel):
                     user_query=user_query,
                     expected_response=expected_response,
                     expected_tools=expected_tools,
+                    expected_node_order=expected_node_order,
                 )
             ],
         )
 
+    @classmethod
+    def multi_turn(
+        cls,
+        eval_id: str,
+        conversation: list[tuple[str, str]],
+        expected_tools: list[ToolCall] | None = None,
+        name: str = "",
+        description: str = "",
+    ) -> EvalCase:
+        """Create a multi-turn evaluation case.
+
+        Args:
+            eval_id: Unique identifier for this case.
+            conversation: List of (user_query, expected_response) tuples.
+            expected_tools: Expected tool calls for the first invocation.
+            name: Human-readable name.
+            description: Description of the test.
+
+        Returns:
+            Configured EvalCase with one Invocation per conversation turn.
+
+        Example:
+            ```python
+            case = EvalCase.multi_turn(
+                eval_id="chat_test",
+                conversation=[
+                    ("Hello", "Hi there!"),
+                    ("What is the weather?", "It is sunny."),
+                ],
+                expected_tools=[ToolCall(name="get_weather", args={})],
+            )
+            ```
+        """
+        invocations = []
+        for i, (user_query, expected_response) in enumerate(conversation):
+            # Only attach expected_tools to the first invocation
+            tools = expected_tools if i == 0 else None
+            invocations.append(
+                Invocation.simple(
+                    user_query=user_query,
+                    expected_response=expected_response,
+                    expected_tools=tools,
+                )
+            )
+
+        return cls(
+            eval_id=eval_id,
+            name=name,
+            description=description,
+            conversation=invocations,
+        )
+
 
 class EvalSet(BaseModel):
-    """A collection of evaluation cases.
-
-    An EvalSet groups related test cases together for batch evaluation.
-
-    Attributes:
-        eval_set_id: Unique identifier for this evaluation set.
-        name: Human-readable name for this set.
-        description: Description of what this evaluation set tests.
-        eval_cases: List of evaluation cases in this set.
-        metadata: Additional metadata for the set.
-    """
+    """A collection of evaluation cases."""
 
     eval_set_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
@@ -301,38 +264,26 @@ class EvalSet(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     def __len__(self) -> int:
-        """Return number of evaluation cases."""
         return len(self.eval_cases)
 
-    def __iter__(self):
-        """Iterate over evaluation cases."""
+    def __iter__(self) -> Iterator[EvalCase]:
         return iter(self.eval_cases)
 
     def add_case(self, case: EvalCase) -> None:
-        """Add an evaluation case to the set."""
         self.eval_cases.append(case)
 
     def get_case(self, eval_id: str) -> EvalCase | None:
-        """Get an evaluation case by ID."""
         for case in self.eval_cases:
             if case.eval_id == eval_id:
                 return case
         return None
 
     def filter_by_tags(self, tags: list[str]) -> list[EvalCase]:
-        """Filter cases by tags (cases must have all specified tags)."""
         return [case for case in self.eval_cases if all(tag in case.tags for tag in tags)]
 
     @classmethod
     def from_file(cls, path: str) -> EvalSet:
-        """Load an EvalSet from a JSON file.
-
-        Args:
-            path: Path to the JSON file.
-
-        Returns:
-            Loaded EvalSet instance.
-        """
+        """Load an EvalSet from a JSON file."""
         import json
         from pathlib import Path
 
@@ -341,13 +292,14 @@ class EvalSet(BaseModel):
         return cls.model_validate(data)
 
     def to_file(self, path: str) -> None:
-        """Save the EvalSet to a JSON file.
-
-        Args:
-            path: Path to save the JSON file.
-        """
+        """Save the EvalSet to a JSON file."""
         import json
         from pathlib import Path
 
         with Path(path).open("w", encoding="utf-8") as f:
             json.dump(self.model_dump(), f, indent=2)
+
+    # Alias so builder.save() works
+    def save(self, path: str) -> None:
+        """Alias for to_file() — save EvalSet to JSON file."""
+        self.to_file(path)

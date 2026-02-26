@@ -6,12 +6,13 @@ Reduces evaluation setup from ~50 lines to ~5 lines with presets and builders.
 import logging
 from typing import TYPE_CHECKING
 
-from agentflow.evaluation.builder import EvalSetBuilder
-from agentflow.evaluation.eval_config import EvalConfig
+from agentflow.evaluation.collectors.trajectory_collector import TrajectoryCollector
+from agentflow.evaluation.config.eval_config import EvalConfig
+from agentflow.evaluation.config.presets import EvalPresets
+from agentflow.evaluation.dataset.builder import EvalSetBuilder
+from agentflow.evaluation.dataset.eval_set import EvalCase, EvalSet, ToolCall
 from agentflow.evaluation.eval_result import EvalReport
-from agentflow.evaluation.eval_set import EvalCase, EvalSet, ToolCall
 from agentflow.evaluation.evaluator import AgentEvaluator
-from agentflow.evaluation.presets import EvalPresets
 from agentflow.evaluation.reporters.console import print_report
 
 
@@ -35,20 +36,23 @@ class QuickEval:
         # Quick single check
         report = await QuickEval.check(
             graph=compiled_graph,
+            collector=collector,
             query="Hello",
-            expected_contains="Hi",
+            expected_response_contains="Hi",
         )
 
         # Use preset
         report = await QuickEval.preset(
             graph=compiled_graph,
+            collector=collector,
             preset=EvalPresets.tool_usage(),
-            eval_set_path="tests/tool_tests.json",
+            eval_set="tests/tool_tests.json",
         )
 
         # Batch tests
         reports = await QuickEval.batch(
             graph,
+            collector,
             [
                 ("Hello", "Hi"),
                 ("Weather?", "Sunny"),
@@ -61,6 +65,7 @@ class QuickEval:
     async def check(
         cls,
         graph: "CompiledGraph",
+        collector: TrajectoryCollector,
         query: str,
         expected_response_contains: str | None = None,
         expected_response_equals: str | None = None,
@@ -114,7 +119,7 @@ class QuickEval:
             config = EvalPresets.quick_check()
 
         # Run evaluation
-        evaluator = AgentEvaluator(graph, config=config)
+        evaluator = AgentEvaluator(graph, collector, config=config)
         report = await evaluator.evaluate(eval_set, verbose=verbose)
 
         if print_results:
@@ -126,6 +131,7 @@ class QuickEval:
     async def preset(
         cls,
         graph: "CompiledGraph",
+        collector: TrajectoryCollector,
         preset: EvalConfig,
         eval_set: EvalSet | str,
         verbose: bool = True,
@@ -143,7 +149,7 @@ class QuickEval:
         Returns:
             EvalReport
         """
-        evaluator = AgentEvaluator(graph, config=preset)
+        evaluator = AgentEvaluator(graph, collector, config=preset)
         report = await evaluator.evaluate(eval_set, verbose=verbose)
 
         if print_results:
@@ -155,6 +161,7 @@ class QuickEval:
     async def batch(
         cls,
         graph: "CompiledGraph",
+        collector: TrajectoryCollector,
         test_pairs: list[tuple[str, str]],
         threshold: float = 0.7,
         verbose: bool = True,
@@ -176,9 +183,9 @@ class QuickEval:
         eval_set = EvalSetBuilder.quick(*test_pairs)
 
         config = EvalPresets.quick_check()
-        config.criteria["response_match"].threshold = threshold
+        config.criteria["rouge_match"].threshold = threshold
 
-        evaluator = AgentEvaluator(graph, config=config)
+        evaluator = AgentEvaluator(graph, collector, config=config)
         report = await evaluator.evaluate(eval_set, verbose=verbose)
 
         if print_results:
@@ -190,6 +197,7 @@ class QuickEval:
     async def tool_usage(
         cls,
         graph: "CompiledGraph",
+        collector: TrajectoryCollector,
         test_cases: list[tuple[str, str, list[str]]],
         strict: bool = True,
         verbose: bool = True,
@@ -220,7 +228,7 @@ class QuickEval:
         eval_set = builder.build()
         config = EvalPresets.tool_usage(strict=strict)
 
-        evaluator = AgentEvaluator(graph, config=config)
+        evaluator = AgentEvaluator(graph, collector, config=config)
         report = await evaluator.evaluate(eval_set, verbose=verbose)
 
         if print_results:
@@ -232,6 +240,7 @@ class QuickEval:
     async def conversation_flow(
         cls,
         graph: "CompiledGraph",
+        collector: TrajectoryCollector,
         conversation: list[tuple[str, str]],
         threshold: float = 0.8,
         verbose: bool = True,
@@ -262,7 +271,7 @@ class QuickEval:
 
         config = EvalPresets.conversation_flow(threshold=threshold)
 
-        evaluator = AgentEvaluator(graph, config=config)
+        evaluator = AgentEvaluator(graph, collector, config=config)
         report = await evaluator.evaluate(eval_set, verbose=verbose)
 
         if print_results:
@@ -274,6 +283,7 @@ class QuickEval:
     async def from_builder(
         cls,
         graph: "CompiledGraph",
+        collector: TrajectoryCollector,
         builder: EvalSetBuilder,
         config: EvalConfig | None = None,
         verbose: bool = True,
@@ -294,7 +304,7 @@ class QuickEval:
         eval_set = builder.build()
         config = config or EvalPresets.quick_check()
 
-        evaluator = AgentEvaluator(graph, config=config)
+        evaluator = AgentEvaluator(graph, collector, config=config)
         report = await evaluator.evaluate(eval_set, verbose=verbose)
 
         if print_results:
@@ -306,6 +316,7 @@ class QuickEval:
     def run_sync(
         cls,
         graph: "CompiledGraph",
+        collector: TrajectoryCollector,
         eval_set: EvalSet | str,
         config: EvalConfig | None = None,
         verbose: bool = True,
@@ -326,7 +337,7 @@ class QuickEval:
         import asyncio
 
         config = config or EvalPresets.quick_check()
-        evaluator = AgentEvaluator(graph, config=config)
+        evaluator = AgentEvaluator(graph, collector, config=config)
 
         report = asyncio.run(evaluator.evaluate(eval_set, verbose=verbose))
 

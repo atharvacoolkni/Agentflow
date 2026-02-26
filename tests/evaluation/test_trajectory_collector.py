@@ -60,10 +60,11 @@ class TestTrajectoryCollector:
 
     @pytest.mark.asyncio
     async def test_collect_tool_execution_event(self):
-        """Test collecting a tool execution event."""
+        """Test collecting a tool execution event (START + END)."""
         collector = TrajectoryCollector()
         
-        event = create_event(
+        # START event parks the tool call
+        start_event = create_event(
             event=Event.TOOL_EXECUTION,
             event_type=EventType.START,
             data={
@@ -72,8 +73,19 @@ class TestTrajectoryCollector:
                 "args": {"location": "NYC"},
             },
         )
+        await collector.on_event(start_event)
         
-        await collector.on_event(event)
+        # END event commits the tool call
+        end_event = create_event(
+            event=Event.TOOL_EXECUTION,
+            event_type=EventType.END,
+            data={
+                "function_name": "get_weather",
+                "tool_call_id": "call_123",
+                "result": "Sunny",
+            },
+        )
+        await collector.on_event(end_event)
         
         assert len(collector.trajectory) == 1
         step = collector.trajectory[0]

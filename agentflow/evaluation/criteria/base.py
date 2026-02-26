@@ -14,9 +14,9 @@ from agentflow.evaluation.eval_result import CriterionResult
 
 
 if TYPE_CHECKING:
-    from agentflow.evaluation.collectors.trajectory_collector import TrajectoryCollector
-    from agentflow.evaluation.eval_config import CriterionConfig
-    from agentflow.evaluation.eval_set import EvalCase, Invocation
+    from agentflow.evaluation.config.eval_config import CriterionConfig
+    from agentflow.evaluation.dataset.eval_set import EvalCase, Invocation
+    from agentflow.evaluation.execution.result import ExecutionResult
 
 
 class BaseCriterion(ABC):
@@ -43,7 +43,7 @@ class BaseCriterion(ABC):
 
             async def evaluate(
                 self,
-                actual: TrajectoryCollector,
+                actual: ExecutionResult,
                 expected: EvalCase,
             ) -> CriterionResult:
                 # Custom evaluation logic
@@ -67,14 +67,14 @@ class BaseCriterion(ABC):
             config: Configuration for this criterion. If not provided,
                 uses default configuration.
         """
-        from agentflow.evaluation.eval_config import CriterionConfig
+        from agentflow.evaluation.config.eval_config import CriterionConfig as _CriterionConfig
 
-        self.config = config or CriterionConfig()
+        self.config = config or _CriterionConfig()
 
     @abstractmethod
     async def evaluate(
         self,
-        actual: TrajectoryCollector,
+        actual: ExecutionResult,
         expected: EvalCase,
     ) -> CriterionResult:
         """Evaluate the actual execution against expected outcomes.
@@ -83,7 +83,7 @@ class BaseCriterion(ABC):
         their specific evaluation logic.
 
         Args:
-            actual: Collected trajectory from actual execution.
+            actual: Extracted execution result from the agent run.
             expected: The evaluation case with expected outcomes.
 
         Returns:
@@ -95,7 +95,7 @@ class BaseCriterion(ABC):
 
     async def evaluate_invocation(
         self,
-        actual: TrajectoryCollector,
+        actual: ExecutionResult,
         expected: Invocation,
     ) -> CriterionResult:
         """Evaluate a single invocation (optional override).
@@ -104,19 +104,16 @@ class BaseCriterion(ABC):
         can override this for invocation-level evaluation.
 
         Args:
-            actual: Collected trajectory from actual execution.
+            actual: Extracted execution result from the agent run.
             expected: The expected invocation outcomes.
 
         Returns:
             CriterionResult for this invocation.
         """
         # Create a temporary EvalCase for single invocation
-        from agentflow.evaluation.eval_set import EvalCase
+        from agentflow.evaluation.dataset.eval_set import EvalCase
 
-        temp_case = EvalCase(
-            eval_id="single_invocation",
-            conversation=[expected],
-        )
+        temp_case = EvalCase(eval_id="single_invocation", conversation=[expected])
         return await self.evaluate(actual, temp_case)
 
     def validate_config(self) -> list[str]:
@@ -154,13 +151,13 @@ class SyncCriterion(BaseCriterion):
     @abstractmethod
     def evaluate_sync(
         self,
-        actual: TrajectoryCollector,
+        actual: ExecutionResult,
         expected: EvalCase,
     ) -> CriterionResult:
         """Synchronous evaluation method.
 
         Args:
-            actual: Collected trajectory from actual execution.
+            actual: Extracted execution result from the agent run.
             expected: The evaluation case with expected outcomes.
 
         Returns:
@@ -169,7 +166,7 @@ class SyncCriterion(BaseCriterion):
 
     async def evaluate(
         self,
-        actual: TrajectoryCollector,
+        actual: ExecutionResult,
         expected: EvalCase,
     ) -> CriterionResult:
         """Async wrapper around sync evaluation."""
@@ -210,7 +207,7 @@ class CompositeCriterion(BaseCriterion):
 
     async def evaluate(
         self,
-        actual: TrajectoryCollector,
+        actual: ExecutionResult,
         expected: EvalCase,
     ) -> CriterionResult:
         """Evaluate all sub-criteria and combine results."""
@@ -269,7 +266,7 @@ class WeightedCriterion(BaseCriterion):
 
     async def evaluate(
         self,
-        actual: TrajectoryCollector,
+        actual: ExecutionResult,
         expected: EvalCase,
     ) -> CriterionResult:
         """Evaluate all criteria and compute weighted average."""
