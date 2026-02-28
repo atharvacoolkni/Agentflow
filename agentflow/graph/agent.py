@@ -112,11 +112,9 @@ class Agent(BaseAgent):
         tools: list[Callable] | ToolNode | None = None,
         tool_node_name: str | None = None,
         extra_messages: list[Message] | None = None,
-        base_url: str | None = None,  # For OpenAI-compatible APIs (ollama, vllm, etc.)
         trim_context: bool = False,
         tools_tags: set[str] | None = None,
-        api_style: str = "chat",
-        reasoning_config: dict[str, Any] | None = None,
+        reasoning_config: dict[str, Any] | None = {"effort": "medium"},
         **kwargs,
     ):
         """Initialize an Agent node.
@@ -136,23 +134,24 @@ class Agent(BaseAgent):
             tool_node_name: Name of the existing ToolNode. You can send list of tools
                 or provide ToolNode instance via `tools` parameter instead.
             extra_messages: Additional messages to include in every interaction.
-            base_url: Optional base URL for OpenAI-compatible APIs
-                (ollama, vllm, openrouter, deepseek, etc.).
             trim_context: Whether to trim context using context manager.
             tools_tags: Optional tags to filter tools.
-            api_style: API style for OpenAI provider. "chat" uses Chat Completions
-                (``client.chat.completions.create``), "responses" uses the Responses
-                API (``client.responses.create``). Default: "chat".
-            reasoning_config: Configuration for reasoning models. For Responses API,
-                passed as ``reasoning=`` parameter. For Chat Completions,
-                ``effort`` is passed as ``reasoning_effort=`` parameter.
-                Supported keys:
-                - ``effort``: "low", "medium", or "high" — controls reasoning depth.
-                - ``summary``: "auto", "concise", or "detailed" — enables reasoning
-                  summaries. Works on gpt-5 series (gpt-5, gpt-5-mini, gpt-5-nano)
-                  without restrictions. **o-series models (o4-mini, o3, etc.) require
-                  OpenAI organization verification** for summaries.
-                Example: ``{"effort": "medium", "summary": "auto"}``.
+            base_url (via **kwargs): Optional base URL for OpenAI-compatible APIs
+                (ollama, vllm, openrouter, deepseek, etc.). Default: ``None``.
+            api_style (via **kwargs): API style for OpenAI provider. ``"chat"`` uses
+                Chat Completions, ``"responses"`` uses the Responses API.
+                Default: ``"chat"``.
+            reasoning_config: Unified reasoning control for all providers. Default
+                is ``{"effort": "medium"}`` (on). Pass ``None`` to turn off.
+                ``effort`` applies to both providers; ``summary`` is OpenAI-only;
+                ``thinking_budget`` is Google-only and overrides ``effort``.
+
+                Examples::
+
+                    reasoning_config=None                                   # OFF for both
+                    reasoning_config={"effort": "high"}                     # high, both providers
+                    reasoning_config={"effort": "low", "summary": "auto"}  # OpenAI: low + summary; Google: low
+                    reasoning_config={"thinking_budget": 5000}              # Google exact budget; OpenAI: no effect
             **llm_kwargs: Additional provider-specific parameters
                 (temperature, max_tokens, top_p, or model args, organization_id, project_id).
 
@@ -208,8 +207,11 @@ class Agent(BaseAgent):
             )
             ```
         """
+        # Pop kwargs-only params before passing to parent
+        base_url: str | None = kwargs.pop("base_url", None)
+        api_style: str = kwargs.pop("api_style", "chat")
         # Call parent constructor
-        super().__init__(model=model, system_prompt=system_prompt or [], tools=tools, **kwargs)
+        super().__init__(model=model, system_prompt=system_prompt or [], tools=tools, base_url=base_url, **kwargs)
 
         # check user sending model and provider as prefix, if provider is not explicitly provided
         if "/" in model and provider is None:
@@ -247,7 +249,9 @@ class Agent(BaseAgent):
         if api_style not in ("chat", "responses"):
             raise ValueError(f"Invalid api_style '{api_style}'. Supported: 'chat', 'responses'")
         self.api_style = api_style
-        self.reasoning_config = reasoning_config
+
+        # False is treated as None (explicit disable)
+        self.reasoning_config: dict[str, Any] | None = None if reasoning_config is False else reasoning_config
 
         logger.info(
             f"Agent initialized: model={model}, provider={self.provider}, "
@@ -643,9 +647,29 @@ class Agent(BaseAgent):
                 # Wrap FunctionDeclarations in a Tool object
                 config_kwargs["tools"] = [types.Tool(function_declarations=function_declarations)]
 
-        # This allows the model to return reasoning content as part of the response
-        if self.output_type == "text":
-            config_kwargs["thinking_config"] = types.ThinkingConfig(include_thoughts=True)
+        # Map reasoning_config → Google ThinkingConfig.
+        # reasoning_config=None (default) means no ThinkingConfig is sent—same
+        # opt-in behaviour as OpenAI. Reasoning is only enabled when the user
+        # explicitly passes a config.
+        #
+        #   effort "low"    → thinking_budget 512
+        #   effort "medium" → thinking_budget 8192
+        #   effort "high"   → thinking_budget 24576
+        #   thinking_budget key → passed through directly (takes precedence)
+        if self.reasoning_config and self.output_type == "text":
+            _EFFORT_TO_BUDGET: dict[str, int] = {
+                "low": 512,
+                "medium": 8192,
+                "high": 24576,
+            }
+            thinking_kwargs: dict[str, Any] = {"include_thoughts": True}
+            budget = self.reasoning_config.get("thinking_budget")
+            effort = self.reasoning_config.get("effort")
+            if budget is not None:
+                thinking_kwargs["thinking_budget"] = int(budget)
+            elif effort and effort in _EFFORT_TO_BUDGET:
+                thinking_kwargs["thinking_budget"] = _EFFORT_TO_BUDGET[effort]
+            config_kwargs["thinking_config"] = types.ThinkingConfig(**thinking_kwargs)
 
         return types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
 
@@ -1034,4 +1058,4 @@ class Agent(BaseAgent):
         return ModelResponseConverter(
             response,
             converter=converter_key,
-        )
+        )                                                                                             
