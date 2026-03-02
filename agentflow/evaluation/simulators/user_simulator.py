@@ -1,24 +1,27 @@
 """
 AI-powered user simulation for dynamic conversation testing.
-
 This module provides the UserSimulator class which uses an LLM to
 simulate realistic user behavior during agent evaluation.
+
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
 
 if TYPE_CHECKING:
-    from agentflow.evaluation.eval_config import UserSimulatorConfig
+    from agentflow.evaluation.config.eval_config import UserSimulatorConfig
+    from agentflow.evaluation.criteria.base import BaseCriterion
     from agentflow.graph.compiled_graph import CompiledGraph
 
 logger = logging.getLogger("agentflow.evaluation")
-
 
 USER_SIMULATOR_PROMPT = """You are simulating a user interacting with an AI assistant.
 
@@ -59,6 +62,18 @@ Generate a natural user response that:
 Respond with only the user's message (no JSON, no explanation).
 """
 
+GOAL_CHECK_PROMPT = """You are evaluating whether a conversation goal has been achieved.
+
+CONVERSATION:
+{conversation}
+
+GOAL: "{goal}"
+
+Has this goal been achieved based on the conversation above?
+Respond with JSON only:
+{{"achieved": true or false, "reasoning": "<one sentence>"}}
+"""
+
 
 class ConversationScenario(BaseModel):
     """Defines a conversation scenario for user simulation.
@@ -91,6 +106,8 @@ class SimulationResult(BaseModel):
         goals_achieved: List of goals that were achieved.
         completed: Whether the simulation completed successfully.
         error: Error message if simulation failed.
+        criterion_scores: Scores from each evaluation criterion (name -> score 0.0-1.0).
+        criterion_details: Detailed output from each criterion (name -> details dict).
     """
 
     scenario_id: str = ""
@@ -99,6 +116,8 @@ class SimulationResult(BaseModel):
     goals_achieved: list[str] = Field(default_factory=list)
     completed: bool = False
     error: str | None = None
+    criterion_scores: dict[str, float] = Field(default_factory=dict)
+    criterion_details: dict[str, Any] = Field(default_factory=dict)
 
 
 class UserSimulator:
@@ -106,20 +125,27 @@ class UserSimulator:
 
     Uses an LLM to generate realistic user messages for testing
     agents with dynamic conversations rather than fixed prompts.
+    Optionally runs evaluation criteria (e.g. LLMJudgeCriterion) after
+    each simulation to score response quality.
 
     Attributes:
         model: The LLM model to use for user simulation.
         temperature: Temperature for user message generation.
         max_turns: Maximum conversation turns per scenario.
+        criteria: Optional list of BaseCriterion to evaluate the simulation result.
 
     Example:
         ```python
-        from agentflow.evaluation.simulators import UserSimulator, ConversationScenario
+        from agentflow.evaluation import (
+            UserSimulator,
+            ConversationScenario,
+            SimulationGoalsCriterion,
+            CriterionConfig,
+        )
 
-        # Create simulator
-        simulator = UserSimulator(model="gpt-4o-mini")
+        judge = SimulationGoalsCriterion(config=CriterionConfig(threshold=0.7))
+        simulator = UserSimulator(model="gemini/gemini-2.5-flash", criteria=[judge])
 
-        # Define scenario
         scenario = ConversationScenario(
             scenario_id="weather_lookup",
             description="User wants to know the weather for travel planning",
@@ -129,19 +155,20 @@ class UserSimulator:
             max_turns=6,
         )
 
-        # Run simulation
         result = await simulator.run(graph, scenario)
         print(f"Completed: {result.completed}")
         print(f"Goals achieved: {result.goals_achieved}")
+        print(f"LLM judge score: {result.criterion_scores}")
         ```
     """
 
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
+        model: str = "gemini/gemini-2.5-flash",
         temperature: float = 0.7,
         max_turns: int = 10,
         config: UserSimulatorConfig | None = None,
+        criteria: list[BaseCriterion] | None = None,
     ):
         """Initialize the user simulator.
 
@@ -150,6 +177,7 @@ class UserSimulator:
             temperature: Temperature for message generation.
             max_turns: Default maximum turns per scenario.
             config: Optional configuration override.
+            criteria: Optional list of BaseCriterion to run after simulation.
         """
         if config:
             self.model = config.model
@@ -159,6 +187,8 @@ class UserSimulator:
             self.model = model
             self.temperature = temperature
             self.max_turns = max_turns
+
+        self.criteria: list[BaseCriterion] = criteria or []
 
     async def run(
         self,
@@ -174,11 +204,20 @@ class UserSimulator:
             config: Optional config to pass to graph execution.
 
         Returns:
-            SimulationResult with conversation history and outcomes.
+            SimulationResult with conversation history, outcomes, and criterion scores.
         """
+        from agentflow.state import Message
+
         conversation: list[dict[str, str]] = []
         goals_achieved: list[str] = []
         max_turns = scenario.max_turns or self.max_turns
+
+        # Each simulation gets its own thread_id so checkpointer state
+        # doesn't bleed between concurrent or sequential runs.
+        run_config = dict(config or {})
+        run_config.setdefault("configurable", {}).setdefault(
+            "thread_id", f"{scenario.scenario_id}-{uuid.uuid4().hex[:8]}"
+        )
 
         try:
             # Start with the initial prompt
@@ -190,15 +229,19 @@ class UserSimulator:
                 # Add user message to conversation
                 conversation.append({"role": "user", "content": user_message})
 
-                # Get agent response
-                from agentflow.state import Message
-
-                input_data = {"messages": [Message.text_message(user_message, role="user")]}
+                # Build full conversation history for the graph (not just current message)
+                all_messages = [
+                    Message.text_message(msg["content"], role=msg["role"]) for msg in conversation
+                ]
+                input_data = {"messages": all_messages}
 
                 try:
-                    result = await graph.ainvoke(input_data, config=config or {})
+                    result = await graph.ainvoke(input_data, config=run_config)
                 except Exception as e:
                     logger.error("Agent execution failed: %s", e)
+                    criterion_scores, criterion_details = await self._evaluate_simulation(
+                        scenario, conversation
+                    )
                     return SimulationResult(
                         scenario_id=scenario.scenario_id,
                         turns=turn + 1,
@@ -206,13 +249,15 @@ class UserSimulator:
                         goals_achieved=goals_achieved,
                         completed=False,
                         error=f"Agent error: {e}",
+                        criterion_scores=criterion_scores,
+                        criterion_details=criterion_details,
                     )
 
                 # Extract agent response
                 agent_response = self._extract_response(result)
                 conversation.append({"role": "assistant", "content": agent_response})
 
-                # Check for goal completion
+                # Check for goal completion using LLM
                 achieved = await self._check_goals(
                     scenario.goals,
                     goals_achieved,
@@ -222,12 +267,17 @@ class UserSimulator:
 
                 # Check if we're done
                 if len(goals_achieved) >= len(scenario.goals):
+                    criterion_scores, criterion_details = await self._evaluate_simulation(
+                        scenario, conversation
+                    )
                     return SimulationResult(
                         scenario_id=scenario.scenario_id,
                         turns=turn + 1,
                         conversation=conversation,
                         goals_achieved=goals_achieved,
                         completed=True,
+                        criterion_scores=criterion_scores,
+                        criterion_details=criterion_details,
                     )
 
                 # Generate next user message
@@ -239,16 +289,30 @@ class UserSimulator:
                 )
 
             # Max turns reached
+            criterion_scores, criterion_details = await self._evaluate_simulation(
+                scenario, conversation
+            )
             return SimulationResult(
                 scenario_id=scenario.scenario_id,
                 turns=max_turns,
                 conversation=conversation,
                 goals_achieved=goals_achieved,
                 completed=len(goals_achieved) >= len(scenario.goals),
+                criterion_scores=criterion_scores,
+                criterion_details=criterion_details,
             )
 
         except Exception as e:
             logger.error("Simulation failed: %s", e)
+            # Attempt criterion evaluation even on failure
+            criterion_scores: dict[str, float] = {}
+            criterion_details: dict[str, Any] = {}
+            try:
+                criterion_scores, criterion_details = await self._evaluate_simulation(
+                    scenario, conversation
+                )
+            except Exception as eval_err:
+                logger.warning("Criterion evaluation also failed: %s", eval_err)
             return SimulationResult(
                 scenario_id=scenario.scenario_id,
                 turns=len(conversation) // 2,
@@ -256,6 +320,8 @@ class UserSimulator:
                 goals_achieved=goals_achieved,
                 completed=False,
                 error=str(e),
+                criterion_scores=criterion_scores,
+                criterion_details=criterion_details,
             )
 
     async def _generate_initial_message(
@@ -299,92 +365,236 @@ class UserSimulator:
         achieved: list[str],
         conversation: list[dict[str, str]],
     ) -> list[str]:
-        """Check which goals have been newly achieved.
+        """Check which goals have been newly achieved using LLM-based evaluation.
 
-        This is a simple implementation that checks if goal keywords
-        appear in the conversation. Override for more sophisticated checking.
+        Falls back to keyword matching if the LLM call fails.
         """
         remaining = [g for g in all_goals if g not in achieved]
         newly_achieved = []
 
-        # Simple keyword matching
-        full_text = " ".join(msg["content"].lower() for msg in conversation)
+        conv_text = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in conversation)
 
         for goal in remaining:
-            # Check if key words from goal appear in conversation
-            goal_words = goal.lower().split()
-            min_word_length = 3
-            if all(word in full_text for word in goal_words if len(word) > min_word_length):
-                newly_achieved.append(goal)
+            prompt = GOAL_CHECK_PROMPT.format(conversation=conv_text, goal=goal)
+            try:
+                raw = await self._call_llm(prompt)
+                # Strip markdown code fences that some LLMs wrap JSON in
+                clean = raw.strip()
+                if clean.startswith("```"):
+                    lines = clean.splitlines()
+                    _min_fenced_lines = 2
+                    clean = "\n".join(lines[1:-1]) if len(lines) > _min_fenced_lines else clean
+                data = json.loads(clean)
+                if data.get("achieved"):
+                    newly_achieved.append(goal)
+            except Exception:
+                # Fallback to keyword matching if LLM call or JSON parse fails
+                _min_word_len = 3
+                words = [w for w in goal.lower().split() if len(w) > _min_word_len]
+                text = " ".join(m["content"].lower() for m in conversation)
+                if words and all(w in text for w in words):
+                    newly_achieved.append(goal)
 
         return newly_achieved
 
-    async def _call_llm(self, prompt: str) -> str:
-        """Call the LLM for user simulation."""
-        try:
-            from litellm import acompletion
+    async def _evaluate_simulation(
+        self,
+        scenario: ConversationScenario,
+        conversation: list[dict[str, str]],
+    ) -> tuple[dict[str, float], dict[str, Any]]:
+        """Run configured criteria against the completed simulation.
 
-            response = await acompletion(
-                model=self.model,
+        Builds a minimal ExecutionResult and EvalCase from the simulation
+        data, then calls each criterion's evaluate() method.
+        The full conversation transcript is passed as actual_response so
+        the LLM judge evaluates goal achievement across all turns.
+
+        Args:
+            scenario: The scenario that was simulated.
+            conversation: Full conversation history.
+
+        Returns:
+            Tuple of (criterion_scores, criterion_details).
+        """
+        if not self.criteria or not conversation:
+            return {}, {}
+
+        from agentflow.evaluation.dataset.eval_set import (
+            EvalCase,
+            Invocation,
+            MessageContent,
+        )
+        from agentflow.evaluation.execution.result import ExecutionResult
+
+        # Build ExecutionResult — pass the full conversation so the LLM judge
+        # evaluates goal achievement across all turns, not just the last message.
+        execution = ExecutionResult()
+        execution.actual_response = "\n".join(
+            f"{m['role'].upper()}: {m['content']}" for m in conversation
+        )
+
+        # Build EvalCase — use scenario goals as the expected success description
+        goals_text = "; ".join(scenario.goals) if scenario.goals else ""
+        case = EvalCase(
+            eval_id=scenario.scenario_id,
+            name=scenario.description,
+            conversation=[
+                Invocation(
+                    user_content=MessageContent(
+                        role="user",
+                        content=scenario.starting_prompt or scenario.description,
+                    ),
+                    expected_final_response=MessageContent(
+                        role="assistant",
+                        content=goals_text,
+                    )
+                    if goals_text
+                    else None,
+                )
+            ],
+        )
+
+        scores: dict[str, float] = {}
+        details: dict[str, Any] = {}
+
+        for criterion in self.criteria:
+            try:
+                cr_result = await criterion.evaluate(execution, case)
+                scores[criterion.name] = cr_result.score
+                details[criterion.name] = cr_result.details or {}
+            except Exception as e:
+                logger.warning("Criterion %s failed: %s", criterion.name, e)
+                scores[criterion.name] = 0.0
+                details[criterion.name] = {"error": str(e)}
+
+        return scores, details
+
+    async def _call_llm(self, prompt: str) -> str:
+        """Call the LLM for user simulation.
+
+        Uses Google GenAI as primary, OpenAI as fallback.
+        """
+        from agentflow.evaluation.criteria.llm_utils import _parse_model_provider
+
+        provider, model_name = _parse_model_provider(self.model)
+
+        if provider == "google":
+            result = await self._call_google(model_name, prompt)
+            if result is not None:
+                return result
+
+        # OpenAI path
+        result = await self._call_openai(
+            self.model if provider == "openai" else model_name,
+            prompt,
+        )
+        if result is not None:
+            return result
+
+        # Fallback: try Google if we haven't yet
+        if provider != "google":
+            result = await self._call_google(model_name, prompt)
+            if result is not None:
+                return result
+
+        return "I have a follow-up question."
+
+    async def _call_google(self, model: str, prompt: str) -> str | None:
+        """Call Google GenAI for user simulation, or None on failure."""
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client()
+            config = types.GenerateContentConfig(temperature=self.temperature)
+            response = await client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=config,
+            )
+            return (response.text or "").strip()
+        except ImportError:
+            return None
+        except Exception as e:
+            logger.warning("Google GenAI call failed (%s): %s", type(e).__name__, e)
+            return None
+
+    async def _call_openai(self, model: str, prompt: str) -> str | None:
+        """Call OpenAI for user simulation, or None on failure."""
+        try:
+            from openai import AsyncOpenAI
+
+            client = AsyncOpenAI()
+            response = await client.chat.completions.create(
+                model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.temperature,
             )
-
-            return response.choices[0].message.content.strip()
-
+            return (response.choices[0].message.content or "").strip()
         except ImportError:
-            try:
-                from openai import AsyncOpenAI
-
-                client = AsyncOpenAI()
-                response = await client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=self.temperature,
-                )
-
-                return response.choices[0].message.content.strip()
-
-            except ImportError:
-                logger.warning("No LLM library available for user simulation")
-                return "I have a follow-up question."
+            return None
+        except Exception as e:
+            logger.warning("OpenAI call failed (%s): %s", type(e).__name__, e)
+            return None
 
     def _extract_response(self, result: dict[str, Any]) -> str:
-        """Extract text response from graph result."""
+        """Extract text response from graph result.
+
+        Handles agentflow Message objects (content = list[ContentBlock])
+        and plain dicts with a string content field.
+        """
         if not result:
             return ""
 
         messages = result.get("messages", [])
-        if messages:
-            for msg in reversed(messages):
-                if hasattr(msg, "role") and msg.role == "assistant":
-                    return msg.get_text() if hasattr(msg, "get_text") else str(msg)
-                if isinstance(msg, dict) and msg.get("role") == "assistant":
-                    content = msg.get("content", "")
-                    if isinstance(content, str):
-                        return content
+        if not messages:
+            return ""
+
+        for msg in reversed(messages):
+            # agentflow Message object: role attr + content is list[ContentBlock]
+            if hasattr(msg, "role") and msg.role == "assistant":
+                if hasattr(msg, "content") and isinstance(msg.content, list):
+                    texts = [
+                        block.text
+                        for block in msg.content
+                        if hasattr(block, "text") and isinstance(block.text, str) and block.text
+                    ]
+                    if texts:
+                        return " ".join(texts)
+                continue
+
+            # Plain dict format
+            if isinstance(msg, dict) and msg.get("role") == "assistant":
+                content = msg.get("content", "")
+                if isinstance(content, str) and content:
+                    return content
 
         return ""
 
 
 class BatchSimulator:
-    """Run multiple simulation scenarios in batch.
+    """Run multiple simulation scenarios concurrently.
 
-    Useful for comprehensive agent testing across multiple scenarios.
+    Scenarios are executed in parallel using asyncio.gather, matching the
+    industry pattern used by DeepEval and Promptfoo. Each scenario gets its
+    own isolated thread_id so checkpointer state never bleeds between runs.
     """
 
     def __init__(
         self,
         simulator: UserSimulator | None = None,
+        max_concurrency: int = 5,
         **kwargs,
     ):
         """Initialize batch simulator.
 
         Args:
             simulator: Optional pre-configured UserSimulator.
+            max_concurrency: Maximum number of scenarios to run in parallel.
             **kwargs: Arguments to pass to UserSimulator if not provided.
         """
         self.simulator = simulator or UserSimulator(**kwargs)
+        self.max_concurrency = max_concurrency
 
     async def run_batch(
         self,
@@ -392,34 +602,34 @@ class BatchSimulator:
         scenarios: list[ConversationScenario],
         config: dict[str, Any] | None = None,
     ) -> list[SimulationResult]:
-        """Run multiple scenarios.
+        """Run multiple scenarios concurrently.
 
         Args:
             graph: The compiled agent graph to test.
             scenarios: List of scenarios to run.
-            config: Optional config to pass to graph execution.
+            config: Optional base config passed to each graph execution.
 
         Returns:
-            List of simulation results.
+            List of simulation results in the same order as scenarios.
         """
-        results = []
+        semaphore = asyncio.Semaphore(self.max_concurrency)
 
-        for scenario in scenarios:
-            logger.info("Running scenario: %s", scenario.scenario_id)
-            result = await self.simulator.run(graph, scenario, config)
-            results.append(result)
+        async def _run_one(scenario: ConversationScenario) -> SimulationResult:
+            async with semaphore:
+                logger.info("Running scenario: %s", scenario.scenario_id)
+                result = await self.simulator.run(graph, scenario, config)
+                status = "completed" if result.completed else "incomplete"
+                logger.info(
+                    "Scenario %s %s after %d turns (%d/%d goals)",
+                    scenario.scenario_id,
+                    status,
+                    result.turns,
+                    len(result.goals_achieved),
+                    len(scenario.goals),
+                )
+                return result
 
-            status = "completed" if result.completed else "incomplete"
-            logger.info(
-                "Scenario %s %s after %d turns (%d/%d goals)",
-                scenario.scenario_id,
-                status,
-                result.turns,
-                len(result.goals_achieved),
-                len(scenario.goals),
-            )
-
-        return results
+        return list(await asyncio.gather(*[_run_one(s) for s in scenarios]))
 
     def summary(self, results: list[SimulationResult]) -> dict[str, Any]:
         """Generate summary statistics for batch results."""

@@ -350,7 +350,7 @@ class Agent(BaseAgent):
         """
         model_lower = model.lower()
 
-        if model_lower.startswith(("gpt-", "o1-")):
+        if model_lower.startswith(("gpt-", "o1-", "o3-", "o4-")):
             return "openai"
         if model_lower.startswith("gemini-"):
             return "google"
@@ -456,31 +456,98 @@ class Agent(BaseAgent):
                 return str(content) if content else ""
         return ""
 
-    def _convert_to_google_format(
-        self, messages: list[dict[str, Any]]
-    ) -> tuple[str | None, list[str]]:
-        """Convert messages to Google GenAI format.
+    def _convert_to_google_format(self, messages: list[dict[str, Any]]) -> tuple[str | None, list]:
+        """Convert messages to Google GenAI format with proper Content objects.
+
+        Converts OpenAI-format message dicts into ``google.genai.types.Content``
+        objects that preserve roles, ``FunctionCall`` parts, and
+        ``FunctionResponse`` parts so the model can correctly interpret
+        multi-turn tool-calling conversations.
 
         Args:
-            messages: List of message dicts
+            messages: List of message dicts (from ``convert_messages``)
 
         Returns:
-            Tuple of (system_instruction, google_contents)
+            Tuple of (system_instruction, list[types.Content])
         """
+        import json as _json
+
+        from google.genai import types
+
         system_instruction = None
-        google_contents = []
+        google_contents: list[types.Content] = []
+
+        # Build a mapping of tool_call_id → function name so that tool-result
+        # messages (which only carry ``tool_call_id``) can be converted into
+        # ``Part.from_function_response(name=...)``.
+        call_id_to_name: dict[str, str] = {}
+        for msg in messages:
+            for tc in msg.get("tool_calls", []) or []:
+                tc_id = tc.get("id", "")
+                fn_name = tc.get("function", {}).get("name", "")
+                if tc_id and fn_name:
+                    call_id_to_name[tc_id] = fn_name
 
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
 
+            # ── system messages → accumulate into system_instruction ──
             if role == "system":
                 if system_instruction is None:
                     system_instruction = str(content)
                 else:
                     system_instruction += "\n" + str(content)
-            else:
-                google_contents.append(str(content))
+                continue
+
+            # ── assistant with tool_calls → model FunctionCall parts ──
+            if role == "assistant" and msg.get("tool_calls"):
+                parts: list[types.Part] = []
+                # Include text part if the assistant also produced text
+                text = str(content) if content else ""
+                if text:
+                    parts.append(types.Part(text=text))
+                for tc in msg["tool_calls"]:
+                    func = tc.get("function", {})
+                    fn_name = func.get("name", "")
+                    try:
+                        fn_args = _json.loads(func.get("arguments", "{}"))
+                    except (_json.JSONDecodeError, TypeError):
+                        fn_args = {}
+                    parts.append(
+                        types.Part(function_call=types.FunctionCall(name=fn_name, args=fn_args))
+                    )
+                google_contents.append(types.Content(role="model", parts=parts))
+                continue
+
+            # ── tool result → user FunctionResponse part ──
+            if role == "tool":
+                tool_call_id = msg.get("tool_call_id", "")
+                fn_name = call_id_to_name.get(
+                    tool_call_id,
+                    msg.get("name", "") or tool_call_id or "unknown_function",
+                )
+                google_contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_function_response(
+                                name=fn_name,
+                                response={"result": str(content) if content else ""},
+                            )
+                        ],
+                    )
+                )
+                continue
+
+            # ── regular user / assistant messages ──
+            google_role = "model" if role == "assistant" else "user"
+            google_contents.append(
+                types.Content(
+                    role=google_role,
+                    parts=[types.Part(text=str(content) if content else "")],
+                )
+            )
 
         return system_instruction, google_contents
 

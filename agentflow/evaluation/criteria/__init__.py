@@ -1,62 +1,66 @@
 """
-Evaluation criteria for agent assessment.
+Evaluation criteria package.
 
-This module provides various criteria for evaluating agent behavior:
-    - BaseCriterion: Abstract base class for all criteria
-    - SyncCriterion: Base class for synchronous criteria
-    - CompositeCriterion: Combine multiple criteria with AND/OR logic
-    - WeightedCriterion: Weighted average of multiple criteria
-    - TrajectoryMatchCriterion: Tool trajectory matching (EXACT, IN_ORDER, ANY_ORDER)
-    - ResponseMatchCriterion: Response similarity using ROUGE-1
-    - LLMJudgeCriterion: LLM-as-judge semantic evaluation
-    - HallucinationCriterion: Groundedness/hallucination detection
-    - SafetyCriterion: Safety and harmlessness evaluation
-    - FactualAccuracyCriterion: Factual accuracy checking
+All criteria accept ExecutionResult as the first argument to evaluate().
+ExecutionResult is built by AgentEvaluator._execution_from_collector()
+using the TrajectoryCollector wired in at graph compile time.
+
+Example:
+    ```python
+    from agentflow.evaluation.criteria import (
+        TrajectoryMatchCriterion,
+        ResponseMatchCriterion,
+        LLMJudgeCriterion,
+        RubricBasedCriterion,
+        HallucinationCriterion,
+        SafetyCriterion,
+        FactualAccuracyCriterion,
+    )
+    ```
 """
 
-from agentflow.evaluation.criteria.advanced import (
-    FactualAccuracyCriterion,
-    HallucinationCriterion,
-    SafetyCriterion,
-)
-from agentflow.evaluation.criteria.base import (
+from .base import (
     BaseCriterion,
     CompositeCriterion,
     SyncCriterion,
     WeightedCriterion,
 )
-from agentflow.evaluation.criteria.llm_judge import (
-    LLMJudgeCriterion,
-    RubricBasedCriterion,
-)
-from agentflow.evaluation.criteria.response import (
+from .factual_accuracy import FactualAccuracyCriterion
+from .hallucination import HallucinationCriterion
+from .llm_judge import LLMJudgeCriterion
+from .llm_utils import LLMCallerMixin
+from .response import (
     ContainsKeywordsCriterion,
     ExactMatchCriterion,
     ResponseMatchCriterion,
+    RougeMatchCriterion,
 )
-from agentflow.evaluation.criteria.trajectory import (
-    ToolNameMatchCriterion,
-    TrajectoryMatchCriterion,
-)
+from .rubric import RubricBasedCriterion
+from .safety import SafetyCriterion
+from .simulation_goals import SimulationGoalsCriterion
+from .trajectory import NodeOrderMatchCriterion, ToolNameMatchCriterion, TrajectoryMatchCriterion
 
 
 __all__ = [
     # Base classes
     "BaseCriterion",
-    "CompositeCriterion",
     "SyncCriterion",
+    "CompositeCriterion",
     "WeightedCriterion",
-    # Trajectory criteria
+    "LLMCallerMixin",
+    # Trajectory
     "TrajectoryMatchCriterion",
+    "NodeOrderMatchCriterion",
     "ToolNameMatchCriterion",
-    # Response criteria
+    # Response
     "ResponseMatchCriterion",
+    "RougeMatchCriterion",
     "ExactMatchCriterion",
     "ContainsKeywordsCriterion",
-    # LLM-as-judge criteria
+    # LLM-based
+    "SimulationGoalsCriterion",
     "LLMJudgeCriterion",
     "RubricBasedCriterion",
-    # Advanced criteria
     "HallucinationCriterion",
     "SafetyCriterion",
     "FactualAccuracyCriterion",
