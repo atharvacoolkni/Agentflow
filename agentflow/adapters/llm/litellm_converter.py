@@ -47,7 +47,7 @@ class LiteLLMConverter(BaseConverter):
     tool calls, and token usage details.
     """
 
-    async def convert_response(self, response: ModelResponse) -> Message:  # pyright: ignore[reportInvalidTypeForm]
+    async def convert_response(self, response: ModelResponse) -> Message:  # pyright: ignore[reportInvalidTypeForm]  # noqa: PLR0912
         """
         Convert a LiteLLM ModelResponse to a Message.
 
@@ -68,14 +68,15 @@ class LiteLLMConverter(BaseConverter):
         usages_data = data.get("usage", {})
 
         usages = TokenUsages(
-            completion_tokens=usages_data.get("completion_tokens", 0),
-            prompt_tokens=usages_data.get("prompt_tokens", 0),
-            total_tokens=usages_data.get("total_tokens", 0),
-            cache_creation_input_tokens=usages_data.get("cache_creation_input_tokens", 0),
-            cache_read_input_tokens=usages_data.get("cache_read_input_tokens", 0),
-            reasoning_tokens=usages_data.get("prompt_tokens_details", {}).get(
+            completion_tokens=usages_data.get("completion_tokens", 0) or 0,
+            prompt_tokens=usages_data.get("prompt_tokens", 0) or 0,
+            total_tokens=usages_data.get("total_tokens", 0) or 0,
+            cache_creation_input_tokens=usages_data.get("cache_creation_input_tokens", 0) or 0,
+            cache_read_input_tokens=usages_data.get("cache_read_input_tokens", 0) or 0,
+            reasoning_tokens=(usages_data.get("completion_tokens_details") or {}).get(
                 "reasoning_tokens", 0
-            ),
+            )
+            or 0,
         )
 
         created_date = data.get("created", datetime.now().timestamp())
@@ -87,6 +88,19 @@ class LiteLLMConverter(BaseConverter):
         message_data = data.get("choices", [{}])[0].get("message", {})
         content = message_data.get("content", "") or ""
         reasoning_content = message_data.get("reasoning_content", "") or ""
+
+        # If reasoning_content is empty, extract from thinking_blocks (used by some providers)
+        thinking_blocks_data = message_data.get("thinking_blocks") or []
+        if not reasoning_content and thinking_blocks_data:
+            thinking_parts = []
+            for tb in thinking_blocks_data:
+                if isinstance(tb, dict) and tb.get("type") == "thinking":
+                    thinking_text = tb.get("thinking", "")
+                    if thinking_text:
+                        thinking_parts.append(thinking_text)
+            if thinking_parts:
+                reasoning_content = "\n\n".join(thinking_parts)
+
         audio_data = message_data.get("audio", None)
         images_data = message_data.get("images", None)
 
@@ -220,6 +234,17 @@ class LiteLLMConverter(BaseConverter):
         if text_part:
             content_blocks.append(TextBlock(text=text_part))
         reasoning_part = getattr(delta, "reasoning_content", "") or ""
+
+        # If reasoning_content is empty, extract from thinking_blocks in delta
+        if not reasoning_part:
+            delta_thinking_blocks = getattr(delta, "thinking_blocks", None) or []
+            for tb in delta_thinking_blocks:
+                if isinstance(tb, dict) and tb.get("type") == "thinking":
+                    thinking_text = tb.get("thinking", "")
+                    if thinking_text:
+                        reasoning_part = thinking_text
+                        break
+
         if reasoning_part:
             content_blocks.append(ReasoningBlock(summary=reasoning_part))
 

@@ -138,7 +138,7 @@ class TestLiteLLMConverter:
                 "total_tokens": 25,
                 "cache_creation_input_tokens": 2,
                 "cache_read_input_tokens": 3,
-                "prompt_tokens_details": {"reasoning_tokens": 1}
+                "completion_tokens_details": {"reasoning_tokens": 1}
             }
         }
         

@@ -39,4 +39,5 @@ INJECTABLE_PARAMS = {
     "publisher",
     "checkpointer",
     "store",
+    "task_manager",
 }

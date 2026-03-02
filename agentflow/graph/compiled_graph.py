@@ -501,7 +501,7 @@ class CompiledGraph[StateT: AgentState]:
             node_name,
         )
 
-    async def aclose(self) -> dict[str, Any]:
+    async def aclose(self) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         """
         Close the graph and release all resources gracefully.
 
@@ -531,6 +531,24 @@ class CompiledGraph[StateT: AgentState]:
         logger.info("Initiating graceful shutdown of CompiledGraph")
         stats: dict[str, Any] = {}
         start_time = asyncio.get_event_loop().time()
+
+        # 0. Wait for pending memory writes to complete (no cancellation)
+        try:
+            from agentflow.store.long_term_memory import get_write_tracker
+
+            tracker = get_write_tracker()
+            if tracker.pending_count > 0:
+                logger.info(
+                    "Waiting for %d pending memory writes before shutdown...",
+                    tracker.pending_count,
+                )
+                write_stats = await tracker.wait_for_pending(timeout=self._shutdown_timeout)
+                stats["memory_writes"] = write_stats
+            else:
+                stats["memory_writes"] = {"status": "completed", "pending_writes": 0}
+        except Exception as e:
+            stats["memory_writes"] = {"status": "error", "error": str(e)}
+            logger.exception("Error waiting for pending memory writes: %s", e)
 
         # 1. Shutdown background task manager first (most critical)
         try:
