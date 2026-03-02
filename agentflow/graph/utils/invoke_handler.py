@@ -15,15 +15,21 @@ from agentflow.graph.utils.utils import (
     get_next_node,
     load_or_create_state,
     parse_response,
-    reload_state,
     sync_data,
 )
 from agentflow.publisher.events import ContentType, Event, EventModel, EventType
 from agentflow.publisher.publish import publish_event
-from agentflow.state import AgentState, ExecutionStatus, Message
+from agentflow.state import AgentState, Message
 from agentflow.state.message_block import RemoteToolCallBlock
-from agentflow.utils import END, START, ResponseGranularity
+from agentflow.utils import END, ResponseGranularity
 from agentflow.state.reducers import add_messages
+
+from .heandler_utils import (
+    check_and_handle_interrupt,
+    check_interrupted,
+    check_stop_requested,
+    interrupt_graph,
+)
 
 from .handler_mixins import (
     BaseLoggingMixin,
@@ -59,166 +65,6 @@ class InvokeHandler[StateT: AgentState](
         self.interrupt_after = interrupt_after or []
         # And set via mixin for a single source of truth
         self._set_interrupts(interrupt_before, interrupt_after)
-
-    async def _check_interrupted(
-        self,
-        state: StateT,
-        input_data: dict[str, Any],
-        config: dict[str, Any],
-    ) -> dict[str, Any]:
-        if state.is_interrupted():
-            logger.info(
-                "Resuming from interrupted state at node '%s'", state.execution_meta.current_node
-            )
-            # Save the interrupted node info before clearing so we don't re-interrupt
-            config["_skip_interrupt_at"] = {
-                "node": state.execution_meta.interrupted_node,
-                "status": state.execution_meta.status,
-            }
-            # This is a resume case - clear interrupt and merge input data
-            if input_data:
-                config["resume_data"] = input_data
-                logger.debug("Added resume data with %d keys", len(input_data))
-            state.clear_interrupt()
-        elif not input_data.get("messages") and not state.context:
-            # This is a fresh execution - validate input data
-            error_msg = "Input data must contain 'messages' for new execution."
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-        elif state.execution_meta.status == ExecutionStatus.COMPLETED:
-            # Previous execution completed - reset to entry point for new execution
-            logger.info(
-                "Previous execution completed. Resetting to entry point for new execution "
-                "with %d messages",
-                len(input_data.get("messages", [])),
-            )
-            # Reset execution metadata for fresh start
-            state.execution_meta.current_node = START
-            state.execution_meta.step = 0
-            state.execution_meta.status = ExecutionStatus.RUNNING
-            state.execution_meta.interrupted_node = None
-            state.execution_meta.interrupt_reason = None
-            state.execution_meta.interrupt_data = None
-        else:
-            # Fresh execution, state is already at START
-            logger.info(
-                "Starting fresh execution with %d messages", len(input_data.get("messages", []))
-            )
-
-        return config
-
-    async def _check_and_handle_interrupt(
-        self,
-        current_node: str,
-        interrupt_type: str,
-        state: StateT,
-        config: dict[str, Any],
-    ) -> bool:
-        """Check for interrupts and save state if needed. Returns True if interrupted."""
-        interrupt_nodes: list[str] = (
-            self.interrupt_before if interrupt_type == "before" else self.interrupt_after
-        ) or []
-
-        # Check if we just resumed from an interrupt at this node with this type
-        skip_info = config.get("_skip_interrupt_at", {})
-        if skip_info.get("node") == current_node:
-            expected_status = (
-                ExecutionStatus.INTERRUPTED_BEFORE
-                if interrupt_type == "before"
-                else ExecutionStatus.INTERRUPTED_AFTER
-            )
-            if skip_info.get("status") == expected_status:
-                logger.debug(
-                    "Skipping %s interrupt check for node '%s' - just resumed from it",
-                    interrupt_type,
-                    current_node,
-                )
-                # Clear the flag after using it once
-                config.pop("_skip_interrupt_at", None)
-                return False
-
-        if current_node in interrupt_nodes:
-            status = (
-                ExecutionStatus.INTERRUPTED_BEFORE
-                if interrupt_type == "before"
-                else ExecutionStatus.INTERRUPTED_AFTER
-            )
-            state.set_interrupt(
-                current_node,
-                f"interrupt_{interrupt_type}: {current_node}",
-                status,
-            )
-            # Save state and interrupt
-            await sync_data(
-                state=state,
-                config=config,
-                messages=[],
-                trim=True,
-            )
-            logger.debug("Node '%s' interrupted", current_node)
-            return True
-
-        logger.debug(
-            "No interrupts found for node '%s', continuing execution",
-            current_node,
-        )
-        return False
-
-    async def _interrupt_graph(
-        self,
-        current_node: str,
-        state: StateT,
-        config: dict[str, Any],
-    ) -> bool:
-        """Check for interrupts and save state if needed. Returns True if interrupted."""
-        status = ExecutionStatus.INTERRUPTED_AFTER
-        state.set_interrupt(
-            current_node,
-            f"interrupt_after: {current_node}",
-            status,
-        )
-        # Save state and interrupt
-        await sync_data(
-            state=state,
-            config=config,
-            messages=[],
-            trim=False,
-        )
-        logger.debug("Node '%s' interrupted", current_node)
-        return True
-
-    async def _check_stop_requested(
-        self,
-        state: StateT,
-        current_node: str,
-        event: EventModel,
-        messages: list[Message],
-        config: dict[str, Any],
-    ) -> bool:
-        """Check if a stop has been requested externally."""
-        state = await reload_state(config, state)  # type: ignore
-
-        # Check if a stop was requested externally (e.g., frontend)
-        if state.is_stopped_requested():
-            logger.info(
-                "Stop requested for thread '%s' at node '%s'",
-                config.get("thread_id"),
-                current_node,
-            )
-            state.set_interrupt(
-                current_node,
-                "stop_requested",
-                ExecutionStatus.INTERRUPTED_AFTER,
-                data={"source": "stop", "info": "requested via is_stopped_requested"},
-            )
-            await sync_data(state=state, config=config, messages=messages, trim=True)
-            event.event_type = EventType.INTERRUPTED
-            event.metadata["interrupted"] = "Stop"
-            event.metadata["status"] = "Graph execution stopped by request"
-            event.data["state"] = state.model_dump()
-            publish_event(event)
-            return True
-        return False
 
     async def _execute_graph(  # noqa: PLR0912, PLR0915
         self,
@@ -270,7 +116,7 @@ class InvokeHandler[StateT: AgentState](
             while current_node != END and step < max_steps:
                 logger.debug("Executing step %d at node '%s'", step, current_node)
                 # Reload state in each iteration to get latest (in case of external updates)
-                res = await self._check_stop_requested(
+                res = await check_stop_requested(
                     state,
                     current_node,
                     event,
@@ -291,11 +137,13 @@ class InvokeHandler[StateT: AgentState](
                 publish_event(event)
 
                 # Check for interrupt_before
-                if await self._check_and_handle_interrupt(
+                if await check_and_handle_interrupt(
                     current_node,
                     "before",
                     state,
                     config,
+                    interrupt_before=self.interrupt_before,
+                    interrupt_after=self.interrupt_after,
                 ):
                     logger.info("Graph execution interrupted before node '%s'", current_node)
                     event.event_type = EventType.INTERRUPTED
@@ -328,7 +176,7 @@ class InvokeHandler[StateT: AgentState](
                 # check frontend nodes
                 if isinstance(result, Message) and RemoteToolCallBlock in result.content:
                     # now interrupt the graph
-                    await self._interrupt_graph(
+                    await interrupt_graph(
                         current_node,
                         state,
                         config,
@@ -370,7 +218,7 @@ class InvokeHandler[StateT: AgentState](
                 )
 
                 # Check stop again after node execution
-                res = await self._check_stop_requested(
+                res = await check_stop_requested(
                     state,
                     current_node,
                     event,
@@ -396,11 +244,13 @@ class InvokeHandler[StateT: AgentState](
                 is_interrupted_requested = False
 
                 # Check for interrupt_after
-                if await self._check_and_handle_interrupt(
+                if await check_and_handle_interrupt(
                     current_node,
                     "after",
                     state,
                     config,
+                    interrupt_before=self.interrupt_before,
+                    interrupt_after=self.interrupt_after,
                 ):
                     logger.info("Graph execution interrupted after node '%s'", current_node)
                     # For interrupt_after, advance to next node before pausing
@@ -555,7 +405,7 @@ class InvokeHandler[StateT: AgentState](
         publish_event(event)
 
         # Check if this is a resume case
-        config = await self._check_interrupted(state, input_data, config)
+        config = await check_interrupted(state, input_data, config)
 
         event.event_type = EventType.UPDATE
         event.metadata["status"] = "Graph invoked"

@@ -41,7 +41,8 @@ class TestAgentEvaluator:
     def test_init_with_default_config(self):
         """Test evaluator initializes with default config."""
         mock_graph = MagicMock()
-        evaluator = AgentEvaluator(mock_graph)
+        mock_collector = MagicMock(spec=TrajectoryCollector)
+        evaluator = AgentEvaluator(mock_graph, mock_collector)
 
         assert evaluator.graph is mock_graph
         assert evaluator.config is not None
@@ -50,13 +51,14 @@ class TestAgentEvaluator:
     def test_init_with_custom_config(self):
         """Test evaluator initializes with custom config."""
         mock_graph = MagicMock()
+        mock_collector = MagicMock(spec=TrajectoryCollector)
         config = EvalConfig(
             criteria={
                 "trajectory_match": CriterionConfig(threshold=0.9),
                 "response_match": CriterionConfig(threshold=0.7),
             }
         )
-        evaluator = AgentEvaluator(mock_graph, config=config)
+        evaluator = AgentEvaluator(mock_graph, mock_collector, config=config)
 
         assert evaluator.config == config
         # Should have 2 enabled criteria
@@ -65,13 +67,14 @@ class TestAgentEvaluator:
     def test_build_criteria(self):
         """Test criteria are built from config."""
         mock_graph = MagicMock()
+        mock_collector = MagicMock(spec=TrajectoryCollector)
         config = EvalConfig(
             criteria={
                 "tool_trajectory_avg_score": CriterionConfig(threshold=0.8),
                 "response_match_score": CriterionConfig(threshold=0.6),
             }
         )
-        evaluator = AgentEvaluator(mock_graph, config=config)
+        evaluator = AgentEvaluator(mock_graph, mock_collector, config=config)
 
         assert len(evaluator.criteria) == 2
         criterion_names = [c.name for c in evaluator.criteria]
@@ -81,12 +84,13 @@ class TestAgentEvaluator:
     def test_create_unknown_criterion(self):
         """Test unknown criterion returns None."""
         mock_graph = MagicMock()
+        mock_collector = MagicMock(spec=TrajectoryCollector)
         config = EvalConfig(
             criteria={
                 "unknown_criterion": CriterionConfig(),
             }
         )
-        evaluator = AgentEvaluator(mock_graph, config=config)
+        evaluator = AgentEvaluator(mock_graph, mock_collector, config=config)
 
         # Unknown criterion should be skipped
         assert len(evaluator.criteria) == 0
@@ -94,7 +98,8 @@ class TestAgentEvaluator:
     def test_load_eval_set_file_not_found(self):
         """Test loading non-existent eval set raises error."""
         mock_graph = MagicMock()
-        evaluator = AgentEvaluator(mock_graph)
+        mock_collector = MagicMock(spec=TrajectoryCollector)
+        evaluator = AgentEvaluator(mock_graph, mock_collector)
 
         with pytest.raises(FileNotFoundError):
             evaluator._load_eval_set("/nonexistent/path.json")
@@ -102,7 +107,8 @@ class TestAgentEvaluator:
     def test_load_eval_set_success(self):
         """Test loading eval set from file."""
         mock_graph = MagicMock()
-        evaluator = AgentEvaluator(mock_graph)
+        mock_collector = MagicMock(spec=TrajectoryCollector)
+        evaluator = AgentEvaluator(mock_graph, mock_collector)
 
         eval_set = EvalSet(
             eval_set_id="test_set",
@@ -127,31 +133,29 @@ class TestAgentEvaluator:
         finally:
             Path(temp_path).unlink()
 
-    def test_extract_response_from_messages(self):
-        """Test extracting response from graph result."""
-        mock_graph = MagicMock()
-        evaluator = AgentEvaluator(mock_graph)
+    def test_execution_from_collector(self):
+        """Test building ExecutionResult from a TrajectoryCollector."""
+        from agentflow.evaluation import ToolCall as EvalToolCall
 
-        # Test with dict message
-        result = {
-            "messages": [
-                {"role": "user", "content": "Hello"},
-                {"role": "assistant", "content": "Hi there!"},
-            ]
-        }
-        response = evaluator._extract_response(result)
-        assert response == "Hi there!"
+        collector = TrajectoryCollector()
+        collector.tool_calls = [
+            EvalToolCall(name="get_weather", args={"city": "NYC"}),
+        ]
+        collector.final_response = "Hi there!"
+        collector.node_visits = ["agent"]
 
-    def test_extract_response_empty_result(self):
-        """Test extracting response from empty result."""
-        mock_graph = MagicMock()
-        evaluator = AgentEvaluator(mock_graph)
+        result = AgentEvaluator._execution_from_collector(collector)
+        assert result.actual_response == "Hi there!"
+        assert len(result.tool_calls) == 1
+        assert result.node_visits == ["agent"]
 
-        response = evaluator._extract_response({})
-        assert response == ""
+    def test_execution_from_collector_empty(self):
+        """Test building ExecutionResult from empty collector."""
+        collector = TrajectoryCollector()
 
-        response = evaluator._extract_response(None)
-        assert response == ""
+        result = AgentEvaluator._execution_from_collector(collector)
+        assert result.actual_response == ""
+        assert len(result.tool_calls) == 0
 
 
 class TestEvaluationRunner:

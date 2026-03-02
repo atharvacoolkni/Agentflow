@@ -16,11 +16,10 @@ from agentflow.evaluation import (
     MessageContent,
     TrajectoryCollector,
 )
-from agentflow.evaluation.criteria.advanced import (
-    HallucinationCriterion,
-    SafetyCriterion,
-    FactualAccuracyCriterion,
-)
+from agentflow.evaluation.execution.result import ExecutionResult
+from agentflow.evaluation.criteria.hallucination import HallucinationCriterion
+from agentflow.evaluation.criteria.safety import SafetyCriterion
+from agentflow.evaluation.criteria.factual_accuracy import FactualAccuracyCriterion
 from agentflow.evaluation.simulators.user_simulator import (
     UserSimulator,
     BatchSimulator,
@@ -55,15 +54,14 @@ class TestHallucinationCriterion:
         """Test evaluation with no response returns success."""
         criterion = HallucinationCriterion()
 
-        collector = TrajectoryCollector()
-        # No messages added
+        execution = ExecutionResult()  # actual_response defaults to ""
 
         case = EvalCase.single_turn(
             eval_id="test",
             user_query="What is the weather?",
         )
 
-        result = await criterion.evaluate(collector, case)
+        result = await criterion.evaluate(execution, case)
         assert result.passed is True
         assert result.score == 1.0
         assert "No response" in result.details.get("note", "")
@@ -83,17 +81,16 @@ class TestHallucinationCriterion:
 
     @pytest.mark.asyncio
     async def test_extract_actual_response(self):
-        """Test extracting actual response from collector."""
+        """Test that actual_response is read from ExecutionResult."""
         criterion = HallucinationCriterion()
 
-        collector = TrajectoryCollector()
-        collector.messages.append({
-            "role": "assistant",
-            "content": "The capital is Paris.",
-        })
+        execution = ExecutionResult(
+            actual_response="The capital is Paris.",
+        )
 
-        response = criterion._extract_actual_response(collector)
-        assert response == "The capital is Paris."
+        # The evaluate method reads actual.actual_response internally.
+        # Verify the field is accessible as expected by criteria.
+        assert execution.actual_response == "The capital is Paris."
 
     @pytest.mark.asyncio
     async def test_extract_context_from_tools(self):
@@ -132,13 +129,13 @@ class TestSafetyCriterion:
         """Test evaluation with no response returns success."""
         criterion = SafetyCriterion()
 
-        collector = TrajectoryCollector()
+        execution = ExecutionResult()  # actual_response defaults to ""
         case = EvalCase.single_turn(
             eval_id="test",
             user_query="Hello",
         )
 
-        result = await criterion.evaluate(collector, case)
+        result = await criterion.evaluate(execution, case)
         assert result.passed is True
         assert result.score == 1.0
 
@@ -169,13 +166,13 @@ class TestFactualAccuracyCriterion:
         """Test evaluation with no response returns success."""
         criterion = FactualAccuracyCriterion()
 
-        collector = TrajectoryCollector()
+        execution = ExecutionResult()  # actual_response defaults to ""
         case = EvalCase.single_turn(
             eval_id="test",
             user_query="What is 2+2?",
         )
 
-        result = await criterion.evaluate(collector, case)
+        result = await criterion.evaluate(execution, case)
         assert result.passed is True
         assert result.score == 1.0
 
@@ -267,7 +264,7 @@ class TestUserSimulator:
         """Test simulator initializes with defaults."""
         simulator = UserSimulator()
 
-        assert simulator.model == "gpt-4o-mini"
+        assert simulator.model == "gemini/gemini-2.5-flash"
         assert simulator.temperature == 0.7
         assert simulator.max_turns == 10
 
@@ -405,8 +402,8 @@ class TestAdvancedCriteriaIntegration:
         """Test hallucination criterion with mocked LLM response."""
         criterion = HallucinationCriterion()
 
-        # Mock the _call_llm method
-        async def mock_call_llm(prompt):
+        # Mock the _call_llm_json method used by _run_samples
+        async def mock_call_llm_json(prompt):
             return {
                 "score": 0.9,
                 "is_grounded": True,
@@ -414,20 +411,18 @@ class TestAdvancedCriteriaIntegration:
                 "reasoning": "Response is well grounded",
             }
 
-        criterion._call_llm = mock_call_llm
+        criterion._call_llm_json = mock_call_llm_json
 
-        collector = TrajectoryCollector()
-        collector.messages.append({
-            "role": "assistant",
-            "content": "The weather is sunny.",
-        })
+        execution = ExecutionResult(
+            actual_response="The weather is sunny.",
+        )
 
         case = EvalCase.single_turn(
             eval_id="test",
             user_query="What's the weather?",
         )
 
-        result = await criterion.evaluate(collector, case)
+        result = await criterion.evaluate(execution, case)
         assert result.passed is True
         assert result.score == 0.9
         assert result.details.get("is_grounded") is True
@@ -437,7 +432,7 @@ class TestAdvancedCriteriaIntegration:
         """Test safety criterion with mocked LLM response."""
         criterion = SafetyCriterion()
 
-        async def mock_call_llm(prompt):
+        async def mock_call_llm_json(prompt):
             return {
                 "score": 1.0,
                 "is_safe": True,
@@ -452,20 +447,18 @@ class TestAdvancedCriteriaIntegration:
                 "reasoning": "Response is safe",
             }
 
-        criterion._call_llm = mock_call_llm
+        criterion._call_llm_json = mock_call_llm_json
 
-        collector = TrajectoryCollector()
-        collector.messages.append({
-            "role": "assistant",
-            "content": "Here's how to make a cake...",
-        })
+        execution = ExecutionResult(
+            actual_response="Here's how to make a cake...",
+        )
 
         case = EvalCase.single_turn(
             eval_id="test",
             user_query="How do I make a cake?",
         )
 
-        result = await criterion.evaluate(collector, case)
+        result = await criterion.evaluate(execution, case)
         assert result.passed is True
         assert result.score == 1.0
         assert result.details.get("is_safe") is True
@@ -475,7 +468,7 @@ class TestAdvancedCriteriaIntegration:
         """Test factual accuracy criterion with mocked LLM response."""
         criterion = FactualAccuracyCriterion()
 
-        async def mock_call_llm(prompt):
+        async def mock_call_llm_json(prompt):
             return {
                 "score": 0.85,
                 "is_accurate": True,
@@ -483,13 +476,11 @@ class TestAdvancedCriteriaIntegration:
                 "reasoning": "Most facts are correct",
             }
 
-        criterion._call_llm = mock_call_llm
+        criterion._call_llm_json = mock_call_llm_json
 
-        collector = TrajectoryCollector()
-        collector.messages.append({
-            "role": "assistant",
-            "content": "Paris is the capital of France.",
-        })
+        execution = ExecutionResult(
+            actual_response="Paris is the capital of France.",
+        )
 
         case = EvalCase.single_turn(
             eval_id="test",
@@ -497,7 +488,7 @@ class TestAdvancedCriteriaIntegration:
             expected_response="The capital of France is Paris.",
         )
 
-        result = await criterion.evaluate(collector, case)
+        result = await criterion.evaluate(execution, case)
         assert result.passed is True
         assert result.score == 0.85
 

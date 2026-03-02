@@ -15,12 +15,13 @@ from agentflow.evaluation import (
     StepType,
 )
 from agentflow.evaluation.collectors.trajectory_collector import TrajectoryCollector
+from agentflow.evaluation.execution.result import ExecutionResult
 from agentflow.evaluation.criteria.trajectory import (
     TrajectoryMatchCriterion,
     ToolNameMatchCriterion,
 )
 from agentflow.evaluation.criteria.response import (
-    ResponseMatchCriterion,
+    RougeMatchCriterion,
     ExactMatchCriterion,
     ContainsKeywordsCriterion,
 )
@@ -256,16 +257,15 @@ class TestToolNameMatchCriterion:
 
 
 class TestResponseMatchCriterion:
-    """Tests for ResponseMatchCriterion."""
+    """Tests for RougeMatchCriterion (ROUGE-1 based)."""
 
     def test_rouge1_perfect_match(self):
         """Test ROUGE-1 with identical text."""
-        criterion = ResponseMatchCriterion()
+        criterion = RougeMatchCriterion()
         
-        collector = TrajectoryCollector()
-        collector.messages = [
-            {"role": "assistant", "content": "The weather in NYC is sunny."}
-        ]
+        execution = ExecutionResult(
+            actual_response="The weather in NYC is sunny.",
+        )
         
         case = EvalCase(
             eval_id="test",
@@ -279,21 +279,20 @@ class TestResponseMatchCriterion:
             ],
         )
         
-        result = criterion.evaluate_sync(collector, case)
+        result = criterion.evaluate_sync(execution, case)
         
         assert result.score == 1.0
         assert result.passed is True
 
     def test_rouge1_partial_match(self):
         """Test ROUGE-1 with partial overlap."""
-        criterion = ResponseMatchCriterion(
+        criterion = RougeMatchCriterion(
             config=CriterionConfig(threshold=0.5)
         )
         
-        collector = TrajectoryCollector()
-        collector.messages = [
-            {"role": "assistant", "content": "The weather is sunny today."}
-        ]
+        execution = ExecutionResult(
+            actual_response="The weather is sunny today.",
+        )
         
         case = EvalCase(
             eval_id="test",
@@ -307,7 +306,7 @@ class TestResponseMatchCriterion:
             ],
         )
         
-        result = criterion.evaluate_sync(collector, case)
+        result = criterion.evaluate_sync(execution, case)
         
         # Should have partial overlap (weather, today, the, is)
         assert result.score > 0.3
@@ -317,12 +316,11 @@ class TestResponseMatchCriterion:
 
     def test_rouge1_no_match(self):
         """Test ROUGE-1 with no overlap."""
-        criterion = ResponseMatchCriterion()
+        criterion = RougeMatchCriterion()
         
-        collector = TrajectoryCollector()
-        collector.messages = [
-            {"role": "assistant", "content": "Hello there!"}
-        ]
+        execution = ExecutionResult(
+            actual_response="Hello there!",
+        )
         
         case = EvalCase(
             eval_id="test",
@@ -336,7 +334,7 @@ class TestResponseMatchCriterion:
             ],
         )
         
-        result = criterion.evaluate_sync(collector, case)
+        result = criterion.evaluate_sync(execution, case)
         
         assert result.score == 0.0
 
@@ -348,10 +346,9 @@ class TestExactMatchCriterion:
         """Test exact match with identical text."""
         criterion = ExactMatchCriterion()
         
-        collector = TrajectoryCollector()
-        collector.messages = [
-            {"role": "assistant", "content": "The answer is 42."}
-        ]
+        execution = ExecutionResult(
+            actual_response="The answer is 42.",
+        )
         
         case = EvalCase(
             eval_id="test",
@@ -365,7 +362,7 @@ class TestExactMatchCriterion:
             ],
         )
         
-        result = criterion.evaluate_sync(collector, case)
+        result = criterion.evaluate_sync(execution, case)
         
         assert result.score == 1.0
         assert result.passed is True
@@ -374,10 +371,9 @@ class TestExactMatchCriterion:
         """Test exact match fails with different text."""
         criterion = ExactMatchCriterion()
         
-        collector = TrajectoryCollector()
-        collector.messages = [
-            {"role": "assistant", "content": "The answer is 41."}
-        ]
+        execution = ExecutionResult(
+            actual_response="The answer is 41.",
+        )
         
         case = EvalCase(
             eval_id="test",
@@ -391,7 +387,7 @@ class TestExactMatchCriterion:
             ],
         )
         
-        result = criterion.evaluate_sync(collector, case)
+        result = criterion.evaluate_sync(execution, case)
         
         assert result.score == 0.0
         assert result.passed is False
@@ -406,14 +402,13 @@ class TestContainsKeywordsCriterion:
             keywords=["weather", "sunny", "NYC"]
         )
         
-        collector = TrajectoryCollector()
-        collector.messages = [
-            {"role": "assistant", "content": "The weather in NYC is sunny today."}
-        ]
+        execution = ExecutionResult(
+            actual_response="The weather in NYC is sunny today.",
+        )
         
         case = EvalCase(eval_id="test")
         
-        result = criterion.evaluate_sync(collector, case)
+        result = criterion.evaluate_sync(execution, case)
         
         assert result.score == 1.0
         assert result.passed is True
@@ -425,14 +420,13 @@ class TestContainsKeywordsCriterion:
             config=CriterionConfig(threshold=0.5),
         )
         
-        collector = TrajectoryCollector()
-        collector.messages = [
-            {"role": "assistant", "content": "The weather is sunny."}
-        ]
+        execution = ExecutionResult(
+            actual_response="The weather is sunny.",
+        )
         
         case = EvalCase(eval_id="test")
         
-        result = criterion.evaluate_sync(collector, case)
+        result = criterion.evaluate_sync(execution, case)
         
         # Only "weather" found out of 3
         assert result.score == pytest.approx(0.333, rel=0.01)

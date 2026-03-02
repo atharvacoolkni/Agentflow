@@ -385,10 +385,10 @@ class TestEvalConfig:
         rubrics = [Rubric(rubric_id="test", content="Test rubric")]
         new_config = config.with_rubrics(rubrics)
         
-        assert "rubric_based_quality" in new_config.criteria
-        assert len(new_config.criteria["rubric_based_quality"].rubrics) == 1
+        assert "rubric_based" in new_config.criteria
+        assert len(new_config.criteria["rubric_based"].rubrics) == 1
         # Original should be unchanged
-        assert "rubric_based_quality" not in config.criteria
+        assert "rubric_based" not in config.criteria
 
     def test_eval_config_serialization(self):
         """Test saving and loading eval config."""

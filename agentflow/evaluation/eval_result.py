@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from agentflow.evaluation.eval_set import ToolCall, TrajectoryStep
+from agentflow.evaluation.dataset.eval_set import ToolCall, TrajectoryStep
 
 
 class CriterionResult(BaseModel):
@@ -36,6 +36,12 @@ class CriterionResult(BaseModel):
     threshold: float = 0.0
     details: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
+
+    @property
+    def reason(self) -> str | None:
+        if self.details and isinstance(self.details, dict):
+            return self.details.get("reason")
+        return None
 
     @classmethod
     def success(
@@ -99,20 +105,29 @@ class EvalCaseResult(BaseModel):
     actual_trajectory: list[TrajectoryStep] = Field(default_factory=list)
     actual_tool_calls: list[ToolCall] = Field(default_factory=list)
     actual_response: str = ""
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+    node_responses: list[dict[str, Any]] = Field(default_factory=list)
+    node_visits: list[str] = Field(default_factory=list)
     duration_seconds: float = 0.0
     error: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    turn_results: list[dict[str, Any]] = Field(default_factory=list)
 
     @classmethod
-    def success(
+    def success(  # noqa: PLR0913
         cls,
         eval_id: str,
         criterion_results: list[CriterionResult],
         actual_trajectory: list[TrajectoryStep] | None = None,
         actual_tool_calls: list[ToolCall] | None = None,
         actual_response: str = "",
+        messages: list[dict[str, Any]] | None = None,
+        node_responses: list[dict[str, Any]] | None = None,
+        node_visits: list[str] | None = None,
         duration_seconds: float = 0.0,
         name: str = "",
+        metadata: dict[str, Any] | None = None,
+        turn_results: list[dict[str, Any]] | None = None,
     ) -> EvalCaseResult:
         """Create a successful case result."""
         all_passed = all(r.passed for r in criterion_results)
@@ -124,7 +139,12 @@ class EvalCaseResult(BaseModel):
             actual_trajectory=actual_trajectory or [],
             actual_tool_calls=actual_tool_calls or [],
             actual_response=actual_response,
+            messages=messages or [],
+            node_responses=node_responses or [],
+            node_visits=node_visits or [],
             duration_seconds=duration_seconds,
+            metadata=metadata or {},
+            turn_results=turn_results or [],
         )
 
     @classmethod
@@ -170,12 +190,18 @@ class EvalCaseResult(BaseModel):
 class EvalSummary(BaseModel):
     """Aggregate statistics across all evaluation cases.
 
+    Counting convention (mirrors DeepEval):
+        - passed_cases:  cases where passed=True
+        - error_cases:   cases where is_error=True (these also have passed=False)
+        - failed_cases:  cases where passed=False AND is_error=False
+        - total_cases == passed_cases + failed_cases + error_cases (invariant)
+
     Attributes:
         total_cases: Total number of cases evaluated.
         passed_cases: Number of cases that passed all criteria.
-        failed_cases: Number of cases that failed at least one criterion.
-        error_cases: Number of cases that errored during evaluation.
-        pass_rate: Percentage of cases that passed (0.0 to 1.0).
+        failed_cases: Number of cases that failed criteria (not errored).
+        error_cases: Number of cases that raised an exception during evaluation.
+        pass_rate: Fraction of cases that passed (0.0-1.0).
         avg_duration_seconds: Average time per case.
         total_duration_seconds: Total evaluation time.
         criterion_stats: Per-criterion aggregate statistics.
@@ -192,17 +218,26 @@ class EvalSummary(BaseModel):
 
     @classmethod
     def from_results(cls, results: list[EvalCaseResult]) -> EvalSummary:
-        """Compute summary statistics from results."""
+        """Compute summary statistics from a list of case results.
+
+        Args:
+            results: List of EvalCaseResult instances.
+
+        Returns:
+            EvalSummary with aggregate stats.
+        """
         if not results:
             return cls()
 
         total = len(results)
         passed = sum(1 for r in results if r.passed)
         errored = sum(1 for r in results if r.is_error)
+        # failed = cases that are not passed AND not errored
+        # (errored cases are counted separately, not double-counted in failed)
         failed = total - passed - errored
         total_duration = sum(r.duration_seconds for r in results)
 
-        # Compute per-criterion stats
+        # Per-criterion stats
         criterion_stats: dict[str, dict[str, Any]] = {}
         for result in results:
             for cr in result.criterion_results:
@@ -222,7 +257,7 @@ class EvalSummary(BaseModel):
                 else:
                     stats["failed"] += 1
 
-        # Compute average scores
+        # Finalise per-criterion averages
         for stats in criterion_stats.values():
             scores = stats.pop("scores")
             stats["avg_score"] = sum(scores) / len(scores) if scores else 0.0
@@ -269,7 +304,17 @@ class EvalReport(BaseModel):
         eval_set_name: str = "",
         config_used: dict[str, Any] | None = None,
     ) -> EvalReport:
-        """Create a report from results."""
+        """Create a report from a list of case results.
+
+        Args:
+            eval_set_id: ID of the eval set.
+            results: List of case results.
+            eval_set_name: Human-readable name.
+            config_used: Config snapshot for provenance.
+
+        Returns:
+            EvalReport with computed summary.
+        """
         return cls(
             eval_set_id=eval_set_id,
             eval_set_name=eval_set_name,
@@ -285,7 +330,7 @@ class EvalReport(BaseModel):
 
     @property
     def failed_cases(self) -> list[EvalCaseResult]:
-        """Get list of failed cases."""
+        """Get list of failed cases (includes errored cases)."""
         return [r for r in self.results if not r.passed]
 
     @property
@@ -294,23 +339,34 @@ class EvalReport(BaseModel):
         return [r for r in self.results if r.passed]
 
     def get_case_result(self, eval_id: str) -> EvalCaseResult | None:
-        """Get result for a specific case."""
+        """Get result for a specific case by ID."""
         for result in self.results:
             if result.eval_id == eval_id:
                 return result
         return None
 
     def to_file(self, path: str) -> None:
-        """Save report to a JSON file."""
+        """Save report to a JSON file.
+
+        Args:
+            path: Output file path.
+        """
         import json
         from pathlib import Path
 
         with Path(path).open("w", encoding="utf-8") as f:
-            json.dump(self.model_dump(), f, indent=2)
+            json.dump(self.model_dump(), f, indent=2, default=str)
 
     @classmethod
     def from_file(cls, path: str) -> EvalReport:
-        """Load report from a JSON file."""
+        """Load report from a JSON file.
+
+        Args:
+            path: Path to the JSON file.
+
+        Returns:
+            EvalReport instance.
+        """
         import json
         from pathlib import Path
 
@@ -319,15 +375,15 @@ class EvalReport(BaseModel):
         return cls.model_validate(data)
 
     def format_summary(self) -> str:
-        """Format summary as human-readable string."""
+        """Format summary as a human-readable string."""
         lines = [
             f"Evaluation Report: {self.eval_set_name or self.eval_set_id}",
             "=" * 60,
             f"Total Cases: {self.summary.total_cases}",
-            f"Passed: {self.summary.passed_cases} ({self.summary.pass_rate:.1%})",
-            f"Failed: {self.summary.failed_cases}",
-            f"Errors: {self.summary.error_cases}",
-            f"Duration: {self.summary.total_duration_seconds:.2f}s",
+            f"Passed:      {self.summary.passed_cases} ({self.summary.pass_rate:.1%})",
+            f"Failed:      {self.summary.failed_cases}",
+            f"Errors:      {self.summary.error_cases}",
+            f"Duration:    {self.summary.total_duration_seconds:.2f}s",
             "",
             "Per-Criterion Results:",
             "-" * 40,
