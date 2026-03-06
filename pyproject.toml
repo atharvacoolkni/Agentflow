@@ -257,6 +257,7 @@ dev = [
     "mkdocs-autorefs",
     "mkdocs-section-index",
     "mkdocs_gen_files",
-    "mem0ai>=0.1.117"
+    "mem0ai>=0.1.117",
+    "google-genai>=1.56.0",
 ]
 

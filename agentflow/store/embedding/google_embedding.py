@@ -6,7 +6,6 @@ from .base_embedding import BaseEmbedding
 
 
 HAS_GOOGLE = False
-genai = None  # Always defined so tests can patch it regardless of install state
 
 try:
     from google import genai
