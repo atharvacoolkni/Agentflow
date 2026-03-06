@@ -50,7 +50,7 @@ jobs:
           pip install --upgrade pip
           uv sync --dev
           # install optional extras used by some tests (eg. LiteLLM)
-          pip install -e ".[litellm]"
+          pip install -e ".[litellm,google-genai]"
 
       - name: Run pre-commit
         run: uv run pre-commit run --all-files
