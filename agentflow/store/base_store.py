@@ -9,8 +9,12 @@ This module provides a clean, modern interface for memory stores with:
 """
 
 import logging
+import secrets
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable
 from typing import Any
+
+from injectq import InjectQ
 
 from agentflow.state import Message
 from agentflow.utils import run_coroutine
@@ -54,6 +58,21 @@ class BaseStore(ABC):
             Any: Implementation-defined setup result.
         """
         raise NotImplementedError
+
+    async def generate_framework_id(self) -> str:
+        """Generate a unique ID using the framework's DI-registered ID generator.
+
+        Uses the ``generated_id`` factory bound in the InjectQ container
+        (registered by ``StateGraph.compile()`` via ``BaseIDGenerator``). Falls
+        back to a ``secrets.token_hex`` value when the DI context is not
+        available (e.g. in unit tests that don't compile a graph).
+        """
+        generated_id = InjectQ.get_instance().try_get("generated_id", None)
+        if generated_id is None:
+            return secrets.token_hex(16)
+        if isinstance(generated_id, Awaitable):
+            generated_id = await generated_id
+        return str(generated_id)
 
     # --- Core Memory Operations ---
 

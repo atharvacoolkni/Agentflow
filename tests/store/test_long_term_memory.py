@@ -12,17 +12,15 @@ from agentflow.store.long_term_memory import (
     DEFAULT_READ_MODE,
     _IDENTICAL_SCORE_THRESHOLD,
     MemoryIntegration,
-    MemoryWriteTracker,
     ReadMode,
     _do_write,
     _find_duplicate_by_key,
     _find_duplicate_by_similarity,
     _format_search_results,
+    _strip_thread_id,
     _validate_memory_type,
-    _write_tracker,
     create_memory_preload_node,
     get_memory_system_prompt,
-    get_write_tracker,
     memory_tool,
 )
 from agentflow.store.store_schema import MemorySearchResult, MemoryType
@@ -31,16 +29,6 @@ from agentflow.store.store_schema import MemorySearchResult, MemoryType
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(autouse=True)
-def _reset_write_tracker():
-    """Clear the global write tracker between tests so stale tasks from
-    one test don't affect another (each pytest-asyncio test gets a fresh
-    event loop)."""
-    _write_tracker._pending.clear()
-    yield
-    _write_tracker._pending.clear()
 
 
 @pytest.fixture()
@@ -61,6 +49,8 @@ def mock_task_manager():
     task.done.return_value = False
     task.add_done_callback = MagicMock()
     mgr.create_task = MagicMock(return_value=task)
+    mgr.get_task_count = MagicMock(return_value=0)
+    mgr.wait_for_all = AsyncMock()
     return mgr
 
 
@@ -164,7 +154,7 @@ class TestDoWrite:
             mock_store, config, "update", "new text", "m1", MemoryType.EPISODIC, "general", {"x": 1}, "replace"
         )
         assert result == {"status": "updated", "memory_id": "m1"}
-        mock_store.aupdate.assert_awaited_once_with(config, "m1", "new text", metadata={"x": 1})
+        mock_store.aupdate.assert_awaited_once_with({"user_id": "u1"}, "m1", "new text", metadata={"x": 1}, replace_metadata=True)
 
     @pytest.mark.asyncio
     async def test_update_merge(self, mock_store, config):
@@ -176,7 +166,7 @@ class TestDoWrite:
         )
         assert result["status"] == "updated"
         mock_store.aupdate.assert_awaited_once_with(
-            config, "m1", "new", metadata={"a": 1, "b": 2}
+            {"user_id": "u1"}, "m1", "new", metadata={"a": 1, "b": 2}
         )
 
     @pytest.mark.asyncio
@@ -186,7 +176,7 @@ class TestDoWrite:
             mock_store, config, "update", "new", "m1", MemoryType.EPISODIC, "general", {"b": 2}, "merge"
         )
         assert result["status"] == "updated"
-        mock_store.aupdate.assert_awaited_once_with(config, "m1", "new", metadata={"b": 2})
+        mock_store.aupdate.assert_awaited_once_with({"user_id": "u1"}, "m1", "new", metadata={"b": 2})
 
     @pytest.mark.asyncio
     async def test_delete(self, mock_store, config):
@@ -194,7 +184,7 @@ class TestDoWrite:
             mock_store, config, "delete", "", "m1", MemoryType.EPISODIC, "general", None, "merge"
         )
         assert result == {"status": "deleted", "memory_id": "m1"}
-        mock_store.adelete.assert_awaited_once_with(config, "m1")
+        mock_store.adelete.assert_awaited_once_with({"user_id": "u1"}, "m1")
 
 
 # ---------------------------------------------------------------------------
@@ -246,18 +236,18 @@ class TestMemoryToolStore:
     async def test_store_success(self, mock_store, mock_task_manager, config):
         result = json.loads(
             await memory_tool(
-                action="store", content="user likes Python", async_write=False,
+                action="store", content="user likes Python",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
-        assert result["status"] == "stored"
-        assert result["memory_id"] == "mem-001"
+        assert result["status"] == "scheduled"
+        mock_task_manager.create_task.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_store_empty_content_error(self, mock_store, mock_task_manager, config):
         result = json.loads(
             await memory_tool(
-                action="store", content="", async_write=False,
+                action="store", content="",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
@@ -267,34 +257,33 @@ class TestMemoryToolStore:
 class TestMemoryToolUpdate:
     @pytest.mark.asyncio
     async def test_update_merge(self, mock_store, mock_task_manager, config):
-        mock_store.aget.return_value = MemorySearchResult(
-            id="m1", content="old", metadata={"a": 1}
-        )
         result = json.loads(
             await memory_tool(
                 action="update", memory_id="m1", content="new",
-                metadata={"b": 2}, write_mode="merge", async_write=False,
+                metadata={"b": 2}, write_mode="merge",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
-        assert result["status"] == "updated"
+        assert result["status"] == "scheduled"
+        mock_task_manager.create_task.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_update_replace(self, mock_store, mock_task_manager, config):
         result = json.loads(
             await memory_tool(
                 action="update", memory_id="m1", content="new",
-                metadata={"b": 2}, write_mode="replace", async_write=False,
+                metadata={"b": 2}, write_mode="replace",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
-        assert result["status"] == "updated"
+        assert result["status"] == "scheduled"
+        mock_task_manager.create_task.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_update_no_memory_id_error(self, mock_store, mock_task_manager, config):
         result = json.loads(
             await memory_tool(
-                action="update", memory_id="", content="new", async_write=False,
+                action="update", memory_id="", content="new",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
@@ -304,7 +293,7 @@ class TestMemoryToolUpdate:
     async def test_update_no_content_error(self, mock_store, mock_task_manager, config):
         result = json.loads(
             await memory_tool(
-                action="update", memory_id="m1", content="", async_write=False,
+                action="update", memory_id="m1", content="",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
@@ -316,17 +305,18 @@ class TestMemoryToolDelete:
     async def test_delete_success(self, mock_store, mock_task_manager, config):
         result = json.loads(
             await memory_tool(
-                action="delete", memory_id="m1", async_write=False,
+                action="delete", memory_id="m1",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
-        assert result["status"] == "deleted"
+        assert result["status"] == "scheduled"
+        mock_task_manager.create_task.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_delete_no_memory_id_error(self, mock_store, mock_task_manager, config):
         result = json.loads(
             await memory_tool(
-                action="delete", memory_id="", async_write=False,
+                action="delete", memory_id="",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
@@ -346,12 +336,12 @@ class TestMemoryToolNoStore:
         assert "no memory store" in result["error"]
 
 
-class TestMemoryToolAsyncWrite:
+class TestMemoryToolWriteScheduling:
     @pytest.mark.asyncio
-    async def test_async_store_schedules_task(self, mock_store, mock_task_manager, config):
+    async def test_store_schedules_task(self, mock_store, mock_task_manager, config):
         result = json.loads(
             await memory_tool(
-                action="store", content="data", async_write=True,
+                action="store", content="data",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
@@ -360,10 +350,10 @@ class TestMemoryToolAsyncWrite:
         mock_store.astore.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_async_delete_schedules_task(self, mock_store, mock_task_manager, config):
+    async def test_delete_schedules_task(self, mock_store, mock_task_manager, config):
         result = json.loads(
             await memory_tool(
-                action="delete", memory_id="m1", async_write=True,
+                action="delete", memory_id="m1",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
@@ -371,12 +361,12 @@ class TestMemoryToolAsyncWrite:
         mock_task_manager.create_task.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_async_search_not_scheduled(self, mock_store, mock_task_manager, config):
-        """Search is always synchronous, async_write is ignored."""
+    async def test_search_not_scheduled(self, mock_store, mock_task_manager, config):
+        """Search is always synchronous — not scheduled as background task."""
         mock_store.asearch.return_value = []
         result = json.loads(
             await memory_tool(
-                action="search", query="test", async_write=True,
+                action="search", query="test",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
@@ -386,16 +376,16 @@ class TestMemoryToolAsyncWrite:
 
 class TestMemoryToolExceptionHandling:
     @pytest.mark.asyncio
-    async def test_store_exception_returns_error(self, mock_store, mock_task_manager, config):
-        mock_store.astore.side_effect = RuntimeError("connection failed")
+    async def test_store_scheduling_exception_returns_error(self, mock_store, mock_task_manager, config):
+        mock_task_manager.create_task.side_effect = RuntimeError("task manager failed")
         result = json.loads(
             await memory_tool(
-                action="store", content="data", async_write=False,
+                action="store", content="data",
                 store=mock_store, task_manager=mock_task_manager, config=config,
             )
         )
         assert "error" in result
-        assert "connection failed" in result["error"]
+        assert "task manager failed" in result["error"]
 
     @pytest.mark.asyncio
     async def test_search_exception_returns_error(self, mock_store, mock_task_manager, config):
@@ -410,75 +400,31 @@ class TestMemoryToolExceptionHandling:
 
 
 # ---------------------------------------------------------------------------
-# MemoryWriteTracker
+# _strip_thread_id
 # ---------------------------------------------------------------------------
 
 
-class TestMemoryWriteTracker:
-    @pytest.mark.asyncio
-    async def test_track_and_wait(self):
-        tracker = MemoryWriteTracker()
-        completed = False
+class TestStripThreadId:
+    def test_removes_thread_id(self):
+        cfg = {"user_id": "u1", "thread_id": "t1", "memory_type": "episodic"}
+        result = _strip_thread_id(cfg)
+        assert "thread_id" not in result
+        assert result["user_id"] == "u1"
+        assert result["memory_type"] == "episodic"
 
-        async def dummy_write():
-            nonlocal completed
-            await asyncio.sleep(0.05)
-            completed = True
+    def test_original_dict_not_mutated(self):
+        cfg = {"user_id": "u1", "thread_id": "t1"}
+        _strip_thread_id(cfg)
+        assert "thread_id" in cfg  # original unchanged
 
-        task = asyncio.create_task(dummy_write())
-        await tracker.track(task)
-        assert tracker.pending_count == 1
+    def test_no_thread_id_returns_copy(self):
+        cfg = {"user_id": "u1"}
+        result = _strip_thread_id(cfg)
+        assert result == {"user_id": "u1"}
+        assert result is not cfg  # always a copy
 
-        stats = await tracker.wait_for_pending(timeout=5.0)
-        assert stats["status"] == "completed"
-        assert completed is True
-
-    @pytest.mark.asyncio
-    async def test_empty_wait(self):
-        tracker = MemoryWriteTracker()
-        stats = await tracker.wait_for_pending()
-        assert stats["status"] == "completed"
-        assert stats["pending_writes"] == 0
-
-    @pytest.mark.asyncio
-    async def test_task_auto_discards_on_done(self):
-        tracker = MemoryWriteTracker()
-
-        async def quick():
-            return
-
-        task = asyncio.create_task(quick())
-        await tracker.track(task)
-        await asyncio.sleep(0.05)
-        assert tracker.pending_count == 0
-
-    @pytest.mark.asyncio
-    async def test_timeout_returns_stats(self):
-        tracker = MemoryWriteTracker()
-
-        async def slow_write():
-            await asyncio.sleep(10)
-
-        task = asyncio.create_task(slow_write())
-        await tracker.track(task)
-
-        stats = await tracker.wait_for_pending(timeout=0.05)
-        assert stats["status"] == "timeout"
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-
-class TestGetWriteTracker:
-    def test_returns_same_instance(self):
-        a = get_write_tracker()
-        b = get_write_tracker()
-        assert a is b
-
-    def test_is_memory_write_tracker(self):
-        assert isinstance(get_write_tracker(), MemoryWriteTracker)
+    def test_empty_dict(self):
+        assert _strip_thread_id({}) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -814,16 +760,18 @@ class TestFindDuplicateByKey:
         assert call_kwargs["filters"] == {"memory_key": "user_name"}
 
     @pytest.mark.asyncio
-    async def test_strips_thread_id_from_config(self, mock_store):
+    async def test_passes_prestripped_config_to_asearch(self, mock_store):
+        """_find_duplicate_by_key passes config as-is; callers must strip thread_id first."""
         mock_store.asearch.return_value = []
+        pre_stripped = {"user_id": "u1"}
         await _find_duplicate_by_key(
             mock_store,
-            {"user_id": "u1", "thread_id": "t1"},
+            pre_stripped,
             "user_name",
             MemoryType.EPISODIC,
         )
         called_config = mock_store.asearch.call_args[0][0]
-        assert "thread_id" not in called_config
+        assert called_config == pre_stripped
 
     @pytest.mark.asyncio
     async def test_returns_none_on_exception(self, mock_store):
@@ -855,16 +803,18 @@ class TestFindDuplicateBySimilarity:
         assert result is hit
 
     @pytest.mark.asyncio
-    async def test_strips_thread_id_from_config(self, mock_store):
+    async def test_passes_prestripped_config_to_asearch(self, mock_store):
+        """_find_duplicate_by_similarity passes config as-is; callers must strip thread_id first."""
         mock_store.asearch.return_value = []
+        pre_stripped = {"user_id": "u1"}
         await _find_duplicate_by_similarity(
             mock_store,
-            {"user_id": "u1", "thread_id": "t1"},
+            pre_stripped,
             "content",
             MemoryType.EPISODIC,
         )
         called_config = mock_store.asearch.call_args[0][0]
-        assert "thread_id" not in called_config
+        assert called_config == pre_stripped
 
     @pytest.mark.asyncio
     async def test_returns_none_on_exception(self, mock_store):

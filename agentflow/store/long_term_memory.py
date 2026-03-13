@@ -20,12 +20,10 @@ Write behaviour (all modes)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
     * The LLM decides *what* to persist by calling ``memory_tool`` with
       ``action="store"`` / ``"update"`` / ``"delete"``.
-    * By default, writes are executed **asynchronously in the background** so
-      they never block the response. Pass ``async_write=False`` to
-      ``memory_tool`` to force a synchronous write (useful for tests or when
-      write ordering matters).
-    * ``MemoryWriteTracker`` guarantees that pending async writes complete
-      before process shutdown.
+    * Writes are executed **asynchronously in the background** so they never
+      block the response.
+    * Background writes are tracked by ``BackgroundTaskManager``, which
+      flushes all pending writes on graph shutdown via ``aclose()``.
     * Write modes: ``merge`` (default) or ``replace``.
 
 Quick start
@@ -53,7 +51,6 @@ Lower-level helpers (advanced / backwards-compatible)
     * ``memory_tool`` - the LLM-callable tool for CRUD on ``BaseStore``.
     * ``create_memory_preload_node`` - factory that returns a graph node.
     * ``get_memory_system_prompt`` - prompt fragment per retrieval mode.
-    * ``MemoryWriteTracker`` - tracks pending async writes.
 """
 
 from __future__ import annotations
@@ -65,7 +62,7 @@ from collections.abc import Callable
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
-from injectq import Inject
+from injectq import Inject, InjectQ
 
 from agentflow.state import AgentState, Message
 from agentflow.store.base_store import BaseStore
@@ -93,65 +90,6 @@ DEFAULT_READ_MODE = ReadMode.NO_RETRIEVAL
 
 
 # ---------------------------------------------------------------------------
-# Write tracker - guarantees all pending writes finish before shutdown
-# ---------------------------------------------------------------------------
-
-
-class MemoryWriteTracker:
-    """Tracks pending async memory writes so shutdown can await them."""
-
-    def __init__(self) -> None:
-        self._pending: set[asyncio.Task] = set()
-        self._lock = asyncio.Lock()
-
-    async def track(self, task: asyncio.Task) -> None:
-        async with self._lock:
-            self._pending.add(task)
-            task.add_done_callback(lambda t: self._pending.discard(t))
-
-    async def wait_for_pending(self, timeout: float | None = None) -> dict[str, Any]:
-        """Wait for all pending writes. Returns stats dict."""
-        tasks = list(self._pending)
-        if not tasks:
-            return {"status": "completed", "pending_writes": 0}
-
-        count = len(tasks)
-        logger.info("Waiting for %d pending memory writes to complete...", count)
-        try:
-            if timeout:
-                await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=timeout,
-                )
-            else:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            logger.info("All %d pending memory writes completed.", count)
-            return {"status": "completed", "pending_writes": 0, "completed": count}
-        except TimeoutError:
-            remaining = len(self._pending)
-            logger.warning(
-                "Timeout waiting for memory writes: %d/%d still pending", remaining, count
-            )
-            return {
-                "status": "timeout",
-                "pending_writes": remaining,
-                "completed": count - remaining,
-            }
-
-    @property
-    def pending_count(self) -> int:
-        return len(self._pending)
-
-
-_write_tracker = MemoryWriteTracker()
-
-
-def get_write_tracker() -> MemoryWriteTracker:
-    """Returns the global write-tracker instance."""
-    return _write_tracker
-
-
-# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -162,17 +100,54 @@ def _validate_memory_type(value: str) -> MemoryType:
     return MemoryType.EPISODIC
 
 
+def _strip_thread_id(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *cfg* with ``thread_id`` removed.
+
+    Long-term memory is cross-thread: searches and deduplication checks must
+    not be scoped to the current conversation thread.
+    """
+    return {k: v for k, v in cfg.items() if k != "thread_id"}
+
+
 def _format_search_results(results: list[MemorySearchResult]) -> list[dict[str, Any]]:
     return [
         {
             "id": r.id,
             "content": r.content,
             "score": round(r.score, 4),
-            "memory_type": r.memory_type.value if r.memory_type else "episodic",
-            "metadata": r.metadata or {},
+            "memory_type": r.memory_type.value,
+            "metadata": r.metadata,
         }
         for r in results
     ]
+
+
+async def _flush_pending_writes(task_manager: BackgroundTaskManager | None = None) -> None:
+    """Flush in-flight background memory writes before a read operation.
+
+    When *task_manager* is provided (``memory_tool`` search path) it is used
+    directly.  When called without an argument (``_preload_node`` context,
+    where DI injection is not available) an ``InjectQ`` lookup is attempted
+    as a best-effort fallback.
+    """
+    if task_manager is not None:
+        if task_manager.get_task_count() > 0:
+            logger.debug(
+                "Waiting for %d background tasks before read…",
+                task_manager.get_task_count(),
+            )
+            await task_manager.wait_for_all(timeout=15)
+        return
+    try:
+        tm = InjectQ.get_instance().try_get(BackgroundTaskManager)
+        if tm is not None and tm.get_task_count() > 0:
+            logger.debug(
+                "Waiting for %d background tasks before preload…",
+                tm.get_task_count(),
+            )
+            await tm.wait_for_all(timeout=15)
+    except Exception:
+        logger.debug("Could not flush background tasks before preload", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -200,11 +175,11 @@ async def _find_duplicate_by_key(
     """Find an existing memory with the same ``memory_key`` for this user.
 
     Uses a metadata filter — no embedding similarity needed.
+    Config must already have thread_id stripped by the caller.
     """
     try:
-        search_cfg = {k: v for k, v in config.items() if k != "thread_id"}
         results = await store.asearch(
-            search_cfg,
+            config,
             memory_key,  # query text (needed for embedding, but filter does the work)
             memory_type=mem_type,
             limit=1,
@@ -223,11 +198,13 @@ async def _find_duplicate_by_similarity(
     mem_type: MemoryType,
     threshold: float = _IDENTICAL_SCORE_THRESHOLD,
 ) -> MemorySearchResult | None:
-    """Fallback: find near-identical content via embedding similarity."""
+    """Fallback: find near-identical content via embedding similarity.
+
+    Config must already have thread_id stripped by the caller.
+    """
     try:
-        search_cfg = {k: v for k, v in config.items() if k != "thread_id"}
         results = await store.asearch(
-            search_cfg,
+            config,
             content,
             memory_type=mem_type,
             limit=1,
@@ -260,19 +237,23 @@ async def _do_write(
     2. Otherwise, fall back to embedding similarity: if a near-identical
        memory exists (score ≥ 0.95) → **skip** the write.
     """
+    # Strip thread_id once here — long-term memory is cross-thread;
+    # neither dedup searches nor writes should be scoped to a single thread.
+    cfg = _strip_thread_id(config)
+
     if action == "store":
         memory_key = (metadata or {}).get("memory_key", "")
 
         # --- Strategy 1: key-based dedup (reliable for topic changes) ---
         if memory_key:
-            existing = await _find_duplicate_by_key(store, config, memory_key, mem_type)
+            existing = await _find_duplicate_by_key(store, cfg, memory_key, mem_type)
             if existing:
                 logger.info(
                     "Updating existing memory by key '%s' (id=%s)",
                     memory_key,
                     existing.id,
                 )
-                await store.aupdate(config, str(existing.id), content, metadata=metadata)
+                await store.aupdate(cfg, str(existing.id), content, metadata=metadata)
                 return {
                     "status": "updated_existing",
                     "memory_id": str(existing.id),
@@ -280,7 +261,7 @@ async def _do_write(
                 }
 
         # --- Strategy 2: similarity-based dedup (catch identical text) ---
-        existing = await _find_duplicate_by_similarity(store, config, content, mem_type)
+        existing = await _find_duplicate_by_similarity(store, cfg, content, mem_type)
         if existing:
             logger.info(
                 "Skipping duplicate memory (score=%.3f, id=%s)",
@@ -293,25 +274,31 @@ async def _do_write(
                 "score": round(existing.score, 4) if existing.score else None,
             }
 
+        generated_id = await store.generate_framework_id()
         mid = await store.astore(
-            config, content, memory_type=mem_type, category=category, metadata=metadata
+            cfg,
+            content,
+            memory_type=mem_type,
+            category=category,
+            metadata=metadata,
+            memory_id=generated_id,
         )
         return {"status": "stored", "memory_id": str(mid)}
 
     if action == "update":
         if write_mode == "merge":
-            existing = await store.aget(config, memory_id)
+            existing = await store.aget(cfg, memory_id)
             merged = {
                 **(existing.metadata if existing and existing.metadata else {}),
                 **(metadata or {}),
             }
-            await store.aupdate(config, memory_id, content, metadata=merged)
+            await store.aupdate(cfg, memory_id, content, metadata=merged)
         else:
-            await store.aupdate(config, memory_id, content, metadata=metadata)
+            await store.aupdate(cfg, memory_id, content, metadata=metadata, replace_metadata=True)
         return {"status": "updated", "memory_id": memory_id}
 
     if action == "delete":
-        await store.adelete(config, memory_id)
+        await store.adelete(cfg, memory_id)
         return {"status": "deleted", "memory_id": memory_id}
 
     return {"error": f"unknown write action: {action}"}
@@ -335,22 +322,19 @@ async def _do_write(
     ),
     tags=["memory", "long_term_memory"],
 )
-async def memory_tool(  # noqa: PLR0913, PLR0911
+async def memory_tool(  # noqa: PLR0911, PLR0913
     action: Literal["search", "store", "update", "delete"] = "search",
     content: str = "",
     memory_key: str = "",
     memory_id: str = "",
     query: str = "",
-    memory_type: str = "episodic",
-    category: str = "general",
+    memory_type: str | None = None,
+    category: str | None = None,
     metadata: dict[str, Any] | None = None,
     limit: int = 5,
-    score_threshold: float = 0.0,
+    score_threshold: float | None = None,
     write_mode: Literal["merge", "replace"] = "merge",
-    async_write: bool = True,
     # Injectable params (excluded from LLM schema automatically)
-    tool_call_id: str = "",
-    state: AgentState | None = None,
     config: dict[str, Any] | None = None,
     store: BaseStore | None = Inject[BaseStore],
     task_manager: BackgroundTaskManager = Inject[BackgroundTaskManager],
@@ -360,7 +344,10 @@ async def memory_tool(  # noqa: PLR0913, PLR0911
         return json.dumps({"error": "no memory store configured"})
 
     cfg = config or {}
-    mem_type = _validate_memory_type(memory_type)
+    # Resolve memory_type and category from config if not explicitly provided.
+    resolved_memory_type = memory_type or cfg.get("memory_type", "episodic")
+    resolved_category = category or cfg.get("category", "general")
+    mem_type = _validate_memory_type(resolved_memory_type)
 
     # Inject memory_key into metadata so _do_write can find it.
     if memory_key:
@@ -383,40 +370,35 @@ async def memory_tool(  # noqa: PLR0913, PLR0911
         if action == "search":
             # Flush any in-flight background writes so the search sees the
             # latest data (e.g. writes scheduled during a previous query).
-            if _write_tracker.pending_count > 0:
-                logger.debug(
-                    "Waiting for %d pending writes before search…",
-                    _write_tracker.pending_count,
-                )
-                await _write_tracker.wait_for_pending(timeout=15)
+            await _flush_pending_writes(task_manager)
 
             # Search across ALL threads for the user — long-term memory
             # is not scoped to a single conversation thread.
-            search_cfg = {k: v for k, v in cfg.items() if k != "thread_id"}
             results = await store.asearch(
-                search_cfg,
+                _strip_thread_id(cfg),
                 query,
                 memory_type=mem_type,
                 limit=limit,
-                score_threshold=score_threshold if score_threshold > 0 else None,
+                score_threshold=score_threshold,
             )
             return json.dumps(_format_search_results(results))
 
-        # --- Write (sync or async) ---
-        if async_write:
-            task = task_manager.create_task(
-                _do_write(
-                    store, cfg, action, content, memory_id, mem_type, category, metadata, write_mode
-                ),
-                name=f"memory_{action}_{memory_id or 'new'}",
-            )
-            await _write_tracker.track(task)
-            return json.dumps({"status": "scheduled", "action": action})
-
-        result = await _do_write(
-            store, cfg, action, content, memory_id, mem_type, category, metadata, write_mode
+        # --- Write (always async / background) ---
+        task_manager.create_task(
+            _do_write(
+                store,
+                cfg,
+                action,
+                content,
+                memory_id,
+                mem_type,
+                resolved_category,
+                metadata,
+                write_mode,
+            ),
+            name=f"memory_{action}_{memory_id or 'new'}",
         )
-        return json.dumps(result)
+        return json.dumps({"status": "scheduled", "action": action})
 
     except Exception as e:
         logger.exception("memory_tool error (action=%s): %s", action, e)
@@ -465,12 +447,7 @@ def create_memory_preload_node(
     async def _preload_node(state: AgentState, config: dict[str, Any]) -> list[Message]:
         # Flush any in-flight background writes so the preload search
         # always sees the latest persisted data.
-        if _write_tracker.pending_count > 0:
-            logger.debug(
-                "Waiting for %d pending writes before preload…",
-                _write_tracker.pending_count,
-            )
-            await _write_tracker.wait_for_pending(timeout=15)
+        await _flush_pending_writes()
 
         query = _builder(state)
         if not query:
@@ -486,18 +463,16 @@ def create_memory_preload_node(
 
         # Search across ALL threads for the user — long-term memory is not
         # scoped to a single conversation thread.
-        search_config = {k: v for k, v in config.items() if k != "thread_id"}
+        search_config = _strip_thread_id(config)
 
         try:
             if memory_types:
                 # Search each requested memory type and merge results.
-                import asyncio as _asyncio
-
                 coros = [
                     store.asearch(search_config, query, memory_type=mt, **search_kwargs)
                     for mt in memory_types
                 ]
-                all_results = await _asyncio.gather(*coros, return_exceptions=True)
+                all_results = await asyncio.gather(*coros, return_exceptions=True)
                 results = []
                 for r in all_results:
                     if isinstance(r, BaseException):
