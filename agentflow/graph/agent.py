@@ -119,7 +119,8 @@ class Agent(BaseAgent):
         trim_context: bool = False,
         tools_tags: set[str] | None = None,
         api_style: str = "chat",
-        reasoning_config: dict[str, Any] | None = None,
+        reasoning_config: dict[str, Any] | None = _REASONING_DEFAULT,  # type: ignore[assignment]
+        skills: "SkillConfig | None" = None,
         **kwargs,
     ):
         """Initialize an Agent node.
