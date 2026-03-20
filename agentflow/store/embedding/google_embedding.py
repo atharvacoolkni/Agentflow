@@ -61,7 +61,10 @@ class GoogleEmbedding(BaseEmbedding):
                 config=config,
             )
 
-            return [embedding.values for embedding in result.embeddings]
+            if not result.embeddings or len(result.embeddings) == 0:
+                raise ValueError("No embeddings returned from Google API")
+
+            return [embedding.values for embedding in result.embeddings]  # type: ignore
         except Exception as e:
             raise RuntimeError(f"Google API error: {e}") from e
 
@@ -80,6 +83,9 @@ class GoogleEmbedding(BaseEmbedding):
                 config=config,
             )
 
+            if not result.embeddings or len(result.embeddings) == 0:
+                raise ValueError("No embeddings returned from Google API")
+
             return result.embeddings[0].values
         except Exception as e:
             raise RuntimeError(f"Google API error: {e}") from e
@@ -93,9 +99,7 @@ class GoogleEmbedding(BaseEmbedding):
 
         # Default dimensions for Google models
         model_dimensions = {
-            "text-embedding-004": 768,
             "gemini-embedding-001": 768,
-            "embedding-001": 768,
         }
         if self.model in model_dimensions:
             return model_dimensions[self.model]
