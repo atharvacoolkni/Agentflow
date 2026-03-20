@@ -416,7 +416,95 @@ class LocalExecMixin:
 
         return input_data
 
-    async def _internal_execute(  # noqa: PLR0915
+    def _publish_internal_completion(
+        self,
+        event: EventModel,
+        message: Message,
+        status: str,
+    ) -> None:
+        event.event_type = EventType.END
+        event.data["message"] = message.model_dump()
+        event.metadata["status"] = status
+        event.content_type = [ContentType.TOOL_RESULT, ContentType.MESSAGE]
+        publish_event(event)
+
+    def _build_internal_result_blocks(
+        self,
+        result: t.Any,
+        tool_call_id: str,
+    ) -> list[ContentBlock]:
+        def safe_serialize(obj: t.Any) -> dict[str, t.Any]:
+            try:
+                json.dumps(obj)
+                return obj if isinstance(obj, dict) else {"content": obj}
+            except (TypeError, OverflowError):
+                if hasattr(obj, "model_dump"):
+                    dumped = obj.model_dump()  # type: ignore
+                    if isinstance(dumped, dict) and dumped.get("type") == "resource":
+                        resource = dumped.get("resource", {})
+                        if isinstance(resource, dict) and "uri" in resource:
+                            resource["uri"] = str(resource["uri"])
+                            dumped["resource"] = resource
+                    return dumped
+                return {"content": str(obj), "type": "fallback"}
+
+        if isinstance(result, str):
+            output: str | list[dict[str, t.Any]] = result
+        elif isinstance(result, dict):
+            output = [safe_serialize(result)]
+        elif hasattr(result, "model_dump"):
+            output = [safe_serialize(result.model_dump())]
+        elif hasattr(result, "__dict__"):
+            output = [safe_serialize(result.__dict__)]
+        elif isinstance(result, list):
+            output = [safe_serialize(item) for item in result]
+        else:
+            output = str(result)
+
+        return [
+            ToolResultBlock(
+                call_id=tool_call_id,
+                output=output,
+                status="completed",
+                is_error=False,
+            )
+        ]
+
+    def _message_from_internal_result(
+        self,
+        result: t.Any,
+        state: AgentState,
+        tool_call_id: str,
+        meta: dict[str, t.Any],
+    ) -> Message:
+        if isinstance(result, ToolResult):
+            if result.state:
+                for key, value in result.state.items():
+                    if hasattr(state, key):
+                        setattr(state, key, value)
+
+            return Message.tool_message(
+                content=[
+                    ToolResultBlock(
+                        call_id=tool_call_id,
+                        output=result.message,
+                        status="completed",
+                        is_error=False,
+                    )
+                ],
+                meta=meta,
+            )
+
+        if isinstance(result, Message):
+            result.metadata = {**meta, **(result.metadata or {})}
+            return result
+
+        return Message.tool_message(
+            content=self._build_internal_result_blocks(result, tool_call_id),
+            meta=meta,
+        )
+
+    async def _internal_execute(
         self,
         name: str,
         args: dict,
@@ -469,21 +557,6 @@ class LocalExecMixin:
         event.node_name = "ToolNode"
         publish_event(event)
 
-        def safe_serialize(obj: t.Any) -> dict[str, t.Any]:
-            try:
-                json.dumps(obj)
-                return obj if isinstance(obj, dict) else {"content": obj}
-            except (TypeError, OverflowError):
-                if hasattr(obj, "model_dump"):
-                    dumped = obj.model_dump()  # type: ignore
-                    if isinstance(dumped, dict) and dumped.get("type") == "resource":
-                        resource = dumped.get("resource", {})
-                        if isinstance(resource, dict) and "uri" in resource:
-                            resource["uri"] = str(resource["uri"])
-                            dumped["resource"] = resource
-                    return dumped
-                return {"content": str(obj), "type": "fallback"}
-
         try:
             input_data = await callback_mgr.execute_before_invoke(context, input_data)
 
@@ -499,111 +572,8 @@ class LocalExecMixin:
                 result,
             )
 
-            if isinstance(result, ToolResult):
-                # Apply partial state update in-place so the graph sees the new field values
-                if result.state:
-                    for key, value in result.state.items():
-                        if hasattr(state, key):
-                            setattr(state, key, value)
-
-                msg = Message.tool_message(
-                    content=[
-                        ToolResultBlock(
-                            call_id=tool_call_id,
-                            output=result.message,
-                            status="completed",
-                            is_error=False,
-                        )
-                    ],
-                    meta=meta,
-                )
-                event.event_type = EventType.END
-                event.data["message"] = msg.model_dump()
-                event.metadata["status"] = "Internal tool execution complete"
-                event.content_type = [ContentType.TOOL_RESULT, ContentType.MESSAGE]
-                publish_event(event)
-                return msg
-
-            if isinstance(result, Message):
-                meta_data = result.metadata or {}
-                meta.update(meta_data)
-                result.metadata = meta
-
-                event.event_type = EventType.END
-                event.data["message"] = result.model_dump()
-                event.metadata["status"] = "Internal tool execution complete"
-                event.content_type = [ContentType.TOOL_RESULT, ContentType.MESSAGE]
-                publish_event(event)
-                return result
-
-            result_blocks = []
-            if isinstance(result, str):
-                result_blocks.append(
-                    ToolResultBlock(
-                        call_id=tool_call_id,
-                        output=result,
-                        status="completed",
-                        is_error=False,
-                    )
-                )
-            elif isinstance(result, dict):
-                result_blocks.append(
-                    ToolResultBlock(
-                        call_id=tool_call_id,
-                        output=[safe_serialize(result)],
-                        status="completed",
-                        is_error=False,
-                    )
-                )
-            elif hasattr(result, "model_dump"):
-                result_blocks.append(
-                    ToolResultBlock(
-                        call_id=tool_call_id,
-                        output=[safe_serialize(result.model_dump())],
-                        status="completed",
-                        is_error=False,
-                    )
-                )
-            elif hasattr(result, "__dict__"):
-                result_blocks.append(
-                    ToolResultBlock(
-                        call_id=tool_call_id,
-                        output=[safe_serialize(result.__dict__)],
-                        status="completed",
-                        is_error=False,
-                    )
-                )
-            elif isinstance(result, list):
-                output = [safe_serialize(item) for item in result]
-                result_blocks.append(
-                    ToolResultBlock(
-                        call_id=tool_call_id,
-                        output=output,
-                        status="completed",
-                        is_error=False,
-                    )
-                )
-            else:
-                result_blocks.append(
-                    ToolResultBlock(
-                        call_id=tool_call_id,
-                        output=str(result),
-                        status="completed",
-                        is_error=False,
-                    )
-                )
-
-            msg = Message.tool_message(
-                content=result_blocks,
-                meta=meta,
-            )
-
-            event.event_type = EventType.END
-            event.data["message"] = msg.model_dump()
-            event.metadata["status"] = "Internal tool execution complete"
-            event.content_type = [ContentType.TOOL_RESULT, ContentType.MESSAGE]
-            publish_event(event)
-
+            msg = self._message_from_internal_result(result, state, tool_call_id, meta)
+            self._publish_internal_completion(event, msg, "Internal tool execution complete")
             return msg
 
         except Exception as e:  # pragma: no cover - error path
