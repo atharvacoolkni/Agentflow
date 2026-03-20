@@ -18,6 +18,7 @@ from .agent_internal.execution import AgentExecutionMixin
 from .agent_internal.google import AgentGoogleMixin
 from .agent_internal.openai import AgentOpenAIMixin
 from .agent_internal.providers import AgentProviderMixin
+from .agent_internal.skills import AgentSkillsMixin
 
 
 logger = logging.getLogger("agentflow.agent")
@@ -28,6 +29,7 @@ class Agent(
     AgentGoogleMixin,
     AgentOpenAIMixin,
     AgentProviderMixin,
+    AgentSkillsMixin,
     BaseAgent,
 ):
     """A smart node function wrapper for LLM interactions.
@@ -244,29 +246,5 @@ class Agent(
             f"output_type={self.output_type}, has_tools={self._tool_node is not None}"
         )
 
-        # ── Skills setup ──────────────────────────────────────────────
-        self._skills_config: SkillConfig | None = None
-        self._skills_registry = None
-        self._skill_injector = None
-
-        if skills is not None:
-            from agentflow.skills.activation import make_clear_skill_tool, make_set_skill_tool
-            from agentflow.skills.injection import SkillInjector
-            from agentflow.skills.registry import SkillsRegistry
-
-            self._skills_config = skills if isinstance(skills, SkillConfig) else SkillConfig()
-            self._skills_registry = SkillsRegistry()
-            if self._skills_config.skills_dir:
-                self._skills_registry.discover(self._skills_config.skills_dir)
-            self._skill_injector = SkillInjector(self._skills_registry, config=self._skills_config)
-            set_skill_fn = make_set_skill_tool(self._skills_registry, self._skills_config)
-            clear_skill_fn = make_clear_skill_tool()
-            if self._tool_node is None:
-                self._tool_node = ToolNode([set_skill_fn, clear_skill_fn])
-            else:
-                self._tool_node._funcs[set_skill_fn.__name__] = set_skill_fn
-                self._tool_node._funcs[clear_skill_fn.__name__] = clear_skill_fn
-            logger.info(
-                "Skills enabled: %d skill(s) discovered",
-                len(self._skills_registry.names()),
-            )
+        # Skills setup (via mixin)
+        self._setup_skills(skills)

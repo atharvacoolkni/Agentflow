@@ -123,8 +123,21 @@ class AgentExecutionMixin:
         container = InjectQ.get_instance()
 
         state = await self._trim_context(state)
+
+        # Build effective system prompts with skills if configured
+        effective_system_prompt = list(self.system_prompt)
+        skill_extra_messages: list[dict[str, Any]] = []
+
+        if hasattr(self, "_build_skill_prompts") and callable(self._build_skill_prompts):
+            effective_system_prompt, skill_extra_messages = self._build_skill_prompts(
+                state, self.system_prompt
+            )
+
+        # Combine system prompts and skill messages
+        all_system = effective_system_prompt + skill_extra_messages
+
         messages = convert_messages(
-            system_prompts=self.system_prompt,
+            system_prompts=all_system,
             state=state,
             extra_messages=self.extra_messages or [],
         )
