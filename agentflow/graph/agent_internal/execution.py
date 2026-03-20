@@ -35,6 +35,21 @@ class AgentExecutionMixin:
         logger.debug("Converting %d tool functions to ToolNode", len(self.tools))
         return ToolNode(self.tools)
 
+    def get_tool_node(self) -> ToolNode | None:
+        """Return the agent's internal ToolNode.
+
+        Use this public method instead of accessing ``agent._tool_node``
+        directly when wiring the tool node into the graph. When skills are
+        enabled, the returned ToolNode already contains the ``set_skill`` and
+        ``clear_skill`` tools.
+
+        Example::
+
+            agent = Agent(model="gpt-4o", tools=[my_tool], skills=SkillConfig(...))
+            graph.add_node("TOOL", agent.get_tool_node())
+        """
+        return self._tool_node
+
     async def _trim_context(
         self,
         state: AgentState,
