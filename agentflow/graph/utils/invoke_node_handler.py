@@ -608,6 +608,18 @@ class InvokeNodeHandler(BaseLoggingMixin):
 
                             result = merged_result
 
+                    # now I can convert this to the standard format of
+                    # {"state": new_state, "messages": messages, "next_node": next_node}
+                    messages = []
+                    new_state, messages, next_node = await process_node_result(
+                        result, state, messages
+                    )
+                    result = {
+                        "state": new_state,
+                        "messages": messages,
+                        "next_node": next_node,
+                    }
+
                 else:
                     # No context, return available tools
                     error_msg = "No context available for tool execution"
@@ -628,7 +640,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
             logger.info("Node '%s' execution completed successfully", self.name)
             # we are flattening the result here because we want to return
             # a consistent format for both tool and normal nodes
-            return result  # type: ignore
+            return result
         except Exception as e:
             # This is the final catch-all for node execution errors
             logger.exception("Node '%s' execution failed: %s", self.name, e)
