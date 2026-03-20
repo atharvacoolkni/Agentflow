@@ -17,6 +17,7 @@ from injectq import Inject, InjectQ
 from agentflow.adapters.llm.model_response_converter import ModelResponseConverter
 from agentflow.graph.base_agent import BaseAgent
 from agentflow.graph.tool_node import ToolNode
+from agentflow.skills.models import SkillConfig
 from agentflow.state import AgentState
 from agentflow.state.base_context import BaseContextManager
 from agentflow.state.message import Message
@@ -117,7 +118,8 @@ class Agent(BaseAgent):
         extra_messages: list[Message] | None = None,
         trim_context: bool = False,
         tools_tags: set[str] | None = None,
-        reasoning_config: dict[str, Any] | None = _REASONING_DEFAULT,  # type: ignore[assignment]
+        api_style: str = "chat",
+        reasoning_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         """Initialize an Agent node.
@@ -274,6 +276,33 @@ class Agent(BaseAgent):
             f"output_type={self.output_type}, has_tools={self._tool_node is not None}"
         )
 
+        # ── Skills setup ──────────────────────────────────────────────
+        self._skills_config: SkillConfig | None = None
+        self._skills_registry = None
+        self._skill_injector = None
+
+        if skills is not None:
+            from agentflow.skills.activation import make_clear_skill_tool, make_set_skill_tool
+            from agentflow.skills.injection import SkillInjector
+            from agentflow.skills.registry import SkillsRegistry
+
+            self._skills_config = skills if isinstance(skills, SkillConfig) else SkillConfig()
+            self._skills_registry = SkillsRegistry()
+            if self._skills_config.skills_dir:
+                self._skills_registry.discover(self._skills_config.skills_dir)
+            self._skill_injector = SkillInjector(self._skills_registry, config=self._skills_config)
+            set_skill_fn = make_set_skill_tool(self._skills_registry, self._skills_config)
+            clear_skill_fn = make_clear_skill_tool()
+            if self._tool_node is None:
+                self._tool_node = ToolNode([set_skill_fn, clear_skill_fn])
+            else:
+                self._tool_node._funcs[set_skill_fn.__name__] = set_skill_fn
+                self._tool_node._funcs[clear_skill_fn.__name__] = clear_skill_fn
+            logger.info(
+                "Skills enabled: %d skill(s) discovered",
+                len(self._skills_registry.names()),
+            )
+
     def _setup_tools(self) -> ToolNode | None:
         """Convert tools to ToolNode if needed.
 
@@ -290,6 +319,21 @@ class Agent(BaseAgent):
 
         logger.debug(f"Converting {len(self.tools)} tool functions to ToolNode")
         return ToolNode(self.tools)
+
+    def get_tool_node(self) -> ToolNode | None:
+        """Return the agent's internal ToolNode.
+
+        Use this public method instead of accessing ``agent._tool_node``
+        directly when wiring the tool node into the graph.  When skills are
+        enabled, the returned ToolNode already contains the ``set_skill`` and
+        ``clear_skill`` tools — no extra setup needed.
+
+        Example::
+
+            agent = Agent(model="gpt-4o", tools=[my_tool], skills=SkillConfig(skills_dir="skills/"))
+            graph.add_node("TOOL", agent.get_tool_node())
+        """
+        return self._tool_node
 
     def _validate_output_type(self) -> None:
         """Validate that provider supports the requested output type.
@@ -343,7 +387,7 @@ class Agent(BaseAgent):
 
             # Try to access context_manager to check if it's actually None (InjectQ proxy)
             try:
-                new_state = await context_manager.trim_context(state)
+                new_state = await context_manager.atrim_context(state)
                 logger.debug("Context trimmed using context manager")
                 return new_state
             except AttributeError:
@@ -1006,25 +1050,29 @@ class Agent(BaseAgent):
     ):
         container = InjectQ.get_instance()
 
-        # check store
-        # store: BaseStore | None = container.try_get(BaseStore)
-
-        # if self.learning and store is None:
-        #     logger.warning(
-        #         "Learning is enabled but no BaseStore instance found in InjectQ container."
-        #         " Ignoring learning."
-        #     )
-
-        # if store and self.learning:
-        #     # retrieve relevant past interactions
-        #     state = await store.asearch(state)
-
         # trim context if enabled
         state = await self._trim_context(state)
 
+        # ── Skills: build dynamic system prompt + extra messages ───────
+        effective_system_prompt = list(self.system_prompt)
+        skill_extra_messages: list[dict] = []
+
+        if self._skills_config and self._skill_injector and self._skills_registry:
+            active_skills: list[str] = state.execution_meta.internal_data.get("active_skills", [])
+
+            if active_skills:
+                # Inject active skill content as extra system messages
+                skill_extra_messages = self._skill_injector.build_skill_prompts(active_skills)
+
+            if self._skills_config.inject_trigger_table:
+                trigger_table = self._skills_registry.build_trigger_table()
+                if trigger_table:
+                    effective_system_prompt.append({"role": "system", "content": trigger_table})
+
         # convert messages for LLM
+        all_system = effective_system_prompt + skill_extra_messages
         messages = convert_messages(
-            system_prompts=self.system_prompt,
+            system_prompts=all_system,
             state=state,
             extra_messages=self.extra_messages or [],
         )
