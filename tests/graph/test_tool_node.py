@@ -7,6 +7,7 @@ from injectq import Inject
 
 from agentflow.graph.tool_node import ToolNode
 from agentflow.state import AgentState
+from agentflow.state import ToolResult
 from agentflow.utils import CallbackManager
 from agentflow.state.message import Message, ToolResultBlock
 
@@ -220,6 +221,44 @@ class TestToolNode:
             callback_manager=callback_mgr,
         )
         assert isinstance(result, Message)
+
+    @pytest.mark.asyncio
+    async def test_invoke_local_tool_tool_result_updates_state(self):
+        """Test ToolResult updates state fields and returns a tool message."""
+
+        class CustomState(AgentState):
+            status: str = "pending"
+
+        def tool_return_tool_result() -> ToolResult:
+            return ToolResult(message="updated", state={"status": "complete"})
+
+        tool_node = ToolNode([tool_return_tool_result])
+
+        state = CustomState()
+        config = {}
+        callback_mgr = MagicMock(spec=CallbackManager)
+        callback_mgr.execute_before_invoke = AsyncMock(side_effect=lambda ctx, data: data)
+        callback_mgr.execute_after_invoke = AsyncMock(
+            side_effect=lambda ctx, input_data, result: result
+        )
+
+        result = await tool_node.invoke(
+            name="tool_return_tool_result",
+            args={},
+            tool_call_id="call_4",
+            config=config,
+            state=state,
+            callback_manager=callback_mgr,
+        )
+
+        # ToolResult returns a dict with state and messages
+        assert isinstance(result, dict)
+        assert "state" in result
+        assert "messages" in result
+        assert state.status == "complete"
+        msg = result["messages"]
+        assert isinstance(msg, Message)
+        assert msg.content[0].output == "updated"
 
     @pytest.mark.asyncio
     async def test_invoke_tool_not_found(self):

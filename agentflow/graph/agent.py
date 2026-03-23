@@ -93,7 +93,7 @@ class Agent(
         trim_context: bool = False,
         tools_tags: set[str] | None = None,
         api_style: str = "chat",
-        reasoning_config: dict[str, Any] | bool | None = REASONING_DEFAULT,
+        reasoning_config: dict[str, Any] | bool | None = REASONING_DEFAULT,  # type: ignore
         skills: "SkillConfig | None" = None,
         **kwargs,
     ):
@@ -258,7 +258,7 @@ class Agent(
             reasoning_config = {"effort": "medium"}
         self.reasoning_config: dict[str, Any] | None = (
             None if reasoning_config is False else reasoning_config
-        )
+        )  # type: ignore
 
         logger.info(
             f"Agent initialized: model={model}, provider={self.provider}, "
