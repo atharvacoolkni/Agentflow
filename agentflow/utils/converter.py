@@ -50,11 +50,11 @@ def _convert_dict(message: Message) -> dict[str, Any] | None:
     if message.role == "assistant" and message.tools_calls:
         return {
             "role": message.role,
-            "content": message.text(),
+            "content": message.content,
             "tool_calls": message.tools_calls,
         }
 
-    return {"role": message.role, "content": message.text()}
+    return {"role": message.role, "content": message.content}
 
 
 def convert_messages(

@@ -43,9 +43,10 @@ class AgentGoogleMixin:
 
             if role == "assistant" and message.get("tool_calls"):
                 parts: list[types.Part] = []
-                text = str(content) if content else ""
-                if text:
-                    parts.append(types.Part(text=text))
+
+                # Handle multimodal content
+                content_parts = self._convert_content_to_parts(content)
+                parts.extend(content_parts)
 
                 for tool_call in message["tool_calls"]:
                     function = tool_call.get("function", {})
@@ -86,14 +87,249 @@ class AgentGoogleMixin:
                 continue
 
             google_role = "model" if role == "assistant" else "user"
+            parts = self._convert_content_to_parts(content)
             google_contents.append(
                 types.Content(
                     role=google_role,
-                    parts=[types.Part(text=str(content) if content else "")],
+                    parts=parts,
                 )
             )
 
         return system_instruction, google_contents
+
+    def _convert_content_to_parts(self, content: Any) -> list:
+        """
+        Convert message content to Google types.Part objects.
+
+        Handles both string content and list of ContentBlock objects for multimodal support.
+
+        Args:
+            content: Message content (str or list[ContentBlock])
+
+        Returns:
+            list: List of types.Part objects for Google API
+        """
+        from google.genai import types  # noqa: PLC0415
+
+        from agentflow.state.message_block import (
+            AudioBlock,
+            ImageBlock,
+            TextBlock,
+            ToolCallBlock,
+            VideoBlock,
+        )
+
+        # Handle string content (backwards compatibility)
+        if isinstance(content, str):
+            return [types.Part(text=content if content else "")]
+
+        # Handle list of ContentBlock objects
+        if not isinstance(content, list):
+            return [types.Part(text=str(content) if content else "")]
+
+        parts = []
+        for block in content:
+            # Text blocks
+            if isinstance(block, TextBlock):
+                if block.text:
+                    parts.append(types.Part(text=block.text))
+
+            # Image blocks
+            elif isinstance(block, ImageBlock):
+                part = self._convert_image_block_to_part(block)
+                if part:
+                    parts.append(part)
+
+            # Audio blocks
+            elif isinstance(block, AudioBlock):
+                part = self._convert_audio_block_to_part(block)
+                if part:
+                    parts.append(part)
+
+            # Video blocks
+            elif isinstance(block, VideoBlock):
+                part = self._convert_video_block_to_part(block)
+                if part:
+                    parts.append(part)
+
+            # ToolCallBlock - skip (handled separately in assistant+tool_calls branch)
+            elif isinstance(block, ToolCallBlock):
+                continue
+
+            # Unknown block types - convert to text
+            else:
+                text = str(block)
+                if text:
+                    parts.append(types.Part(text=text))
+
+        # Return at least one empty text part if no content
+        return parts if parts else [types.Part(text="")]
+
+    def _convert_image_block_to_part(self, block: Any) -> Any | None:
+        """
+        Convert ImageBlock to Google types.Part.
+
+        Args:
+            block: ImageBlock object containing media reference
+
+        Returns:
+            types.Part or None if conversion fails
+        """
+        from google.genai import types  # noqa: PLC0415
+        import base64
+
+        media = block.media
+        mime_type = media.mime_type or "image/jpeg"
+
+        # Handle base64 data
+        if media.kind == "data" and media.data_base64:
+            try:
+                image_bytes = base64.b64decode(media.data_base64)
+                return types.Part(
+                    inline_data=types.Blob(
+                        mime_type=mime_type,
+                        data=image_bytes,
+                    )
+                )
+            except Exception as e:
+                logger.warning("Failed to decode base64 image: %s", e)
+                return None
+
+        # Handle URLs (file URIs or http(s) URLs)
+        if media.kind == "url" and media.url:
+            return types.Part(
+                file_data=types.FileData(
+                    mime_type=mime_type,
+                    file_uri=media.url,
+                )
+            )
+
+        # Handle file_id (Google File API uploads)
+        if media.kind == "file_id" and media.file_id:
+            # Google expects file URIs in format: "gs://..." or file API URIs
+            file_uri = media.file_id
+            if not file_uri.startswith(("gs://", "https://generativelanguage.googleapis.com")):
+                file_uri = f"https://generativelanguage.googleapis.com/v1beta/files/{media.file_id}"
+
+            return types.Part(
+                file_data=types.FileData(
+                    mime_type=mime_type,
+                    file_uri=file_uri,
+                )
+            )
+
+        logger.warning("ImageBlock has no valid media reference: %s", media)
+        return None
+
+    def _convert_audio_block_to_part(self, block: Any) -> Any | None:
+        """
+        Convert AudioBlock to Google types.Part.
+
+        Args:
+            block: AudioBlock object containing media reference
+
+        Returns:
+            types.Part or None if conversion fails
+        """
+        from google.genai import types  # noqa: PLC0415
+        import base64
+
+        media = block.media
+        mime_type = media.mime_type or "audio/wav"
+
+        # Handle base64 data
+        if media.kind == "data" and media.data_base64:
+            try:
+                audio_bytes = base64.b64decode(media.data_base64)
+                return types.Part(
+                    inline_data=types.Blob(
+                        mime_type=mime_type,
+                        data=audio_bytes,
+                    )
+                )
+            except Exception as e:
+                logger.warning("Failed to decode base64 audio: %s", e)
+                return None
+
+        # Handle URLs (file URIs or http(s) URLs)
+        if media.kind == "url" and media.url:
+            return types.Part(
+                file_data=types.FileData(
+                    mime_type=mime_type,
+                    file_uri=media.url,
+                )
+            )
+
+        # Handle file_id (Google File API uploads)
+        if media.kind == "file_id" and media.file_id:
+            file_uri = media.file_id
+            if not file_uri.startswith(("gs://", "https://generativelanguage.googleapis.com")):
+                file_uri = f"https://generativelanguage.googleapis.com/v1beta/files/{media.file_id}"
+
+            return types.Part(
+                file_data=types.FileData(
+                    mime_type=mime_type,
+                    file_uri=file_uri,
+                )
+            )
+
+        logger.warning("AudioBlock has no valid media reference: %s", media)
+        return None
+
+    def _convert_video_block_to_part(self, block: Any) -> Any | None:
+        """
+        Convert VideoBlock to Google types.Part.
+
+        Args:
+            block: VideoBlock object containing media reference
+
+        Returns:
+            types.Part or None if conversion fails
+        """
+        from google.genai import types  # noqa: PLC0415
+        import base64
+
+        media = block.media
+        mime_type = media.mime_type or "video/mp4"
+
+        # Handle base64 data
+        if media.kind == "data" and media.data_base64:
+            try:
+                video_bytes = base64.b64decode(media.data_base64)
+                return types.Part(
+                    inline_data=types.Blob(
+                        mime_type=mime_type,
+                        data=video_bytes,
+                    )
+                )
+            except Exception as e:
+                logger.warning("Failed to decode base64 video: %s", e)
+                return None
+
+        # Handle URLs (file URIs or http(s) URLs)
+        if media.kind == "url" and media.url:
+            return types.Part(
+                file_data=types.FileData(
+                    mime_type=mime_type,
+                    file_uri=media.url,
+                )
+            )
+
+        # Handle file_id (Google File API uploads)
+        if media.kind == "file_id" and media.file_id:
+            file_uri = media.file_id
+            if not file_uri.startswith(("gs://", "https://generativelanguage.googleapis.com")):
+                file_uri = f"https://generativelanguage.googleapis.com/v1beta/files/{media.file_id}"
+
+            return types.Part(
+                file_data=types.FileData(
+                    mime_type=mime_type,
+                    file_uri=file_uri,
+                )
+            )
+
+        logger.warning("VideoBlock has no valid media reference: %s", media)
+        return None
 
     def _convert_tools_to_google_format(self, tools: list) -> list:
         """Convert OpenAI-style tool definitions into Google FunctionDeclarations."""

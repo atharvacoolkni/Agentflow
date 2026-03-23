@@ -353,3 +353,265 @@ class TestGoogleGenAIConverter:
         # Should yield one empty message (error handling behavior)
         assert len(messages) == 1
         assert len(messages[0].content) == 0
+
+
+class TestGoogleGenAIInputConversion:
+    """Test class for Google GenAI input message conversion (Agentflow → Google)."""
+
+    @pytest.fixture
+    def mixin(self):
+        """Create an AgentGoogleMixin instance for testing."""
+        from agentflow.graph.agent_internal.google import AgentGoogleMixin
+
+        return AgentGoogleMixin()
+
+    def test_convert_to_google_format_with_image_url(self, mixin):
+        """Test conversion of message with image URL."""
+        from agentflow.state.message_block import TextBlock, ImageBlock, MediaRef
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    TextBlock(text="What do you see in this image?"),
+                    ImageBlock(
+                        media=MediaRef(
+                            kind="url",
+                            url="https://example.com/image.jpg",
+                            mime_type="image/jpeg",
+                        )
+                    ),
+                ],
+            }
+        ]
+
+        system_instruction, google_contents = mixin._convert_to_google_format(messages)
+
+        # Assertions
+        assert len(google_contents) == 1
+        assert google_contents[0].role == "user"
+        assert len(google_contents[0].parts) == 2
+        # First part should be text
+        assert google_contents[0].parts[0].text == "What do you see in this image?"
+        # Second part should be file_data
+        assert hasattr(google_contents[0].parts[1], "file_data")
+        assert google_contents[0].parts[1].file_data.file_uri == "https://example.com/image.jpg"
+        assert google_contents[0].parts[1].file_data.mime_type == "image/jpeg"
+
+    def test_convert_to_google_format_with_image_base64(self, mixin):
+        """Test conversion of message with base64 image."""
+        from agentflow.state.message_block import TextBlock, ImageBlock, MediaRef
+        import base64
+
+        # Create a small test image data
+        test_data = b"test_image_data"
+        base64_data = base64.b64encode(test_data).decode()
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    TextBlock(text="Analyze this image"),
+                    ImageBlock(
+                        media=MediaRef(
+                            kind="data",
+                            data_base64=base64_data,
+                            mime_type="image/png",
+                        )
+                    ),
+                ],
+            }
+        ]
+
+        system_instruction, google_contents = mixin._convert_to_google_format(messages)
+
+        # Assertions
+        assert len(google_contents) == 1
+        assert len(google_contents[0].parts) == 2
+        # Second part should be inline_data
+        assert hasattr(google_contents[0].parts[1], "inline_data")
+        assert google_contents[0].parts[1].inline_data.data == test_data
+        assert google_contents[0].parts[1].inline_data.mime_type == "image/png"
+
+    def test_convert_to_google_format_with_image_file_id(self, mixin):
+        """Test conversion of message with file_id image."""
+        from agentflow.state.message_block import ImageBlock, MediaRef
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    ImageBlock(
+                        media=MediaRef(
+                            kind="file_id",
+                            file_id="abc123",
+                            mime_type="image/jpeg",
+                        )
+                    ),
+                ],
+            }
+        ]
+
+        system_instruction, google_contents = mixin._convert_to_google_format(messages)
+
+        # Assertions
+        assert len(google_contents) == 1
+        assert len(google_contents[0].parts) == 1
+        # Should be file_data with formatted URI
+        assert hasattr(google_contents[0].parts[0], "file_data")
+        assert "abc123" in google_contents[0].parts[0].file_data.file_uri
+
+    def test_convert_to_google_format_mixed_content(self, mixin):
+        """Test conversion of message with text + multiple images."""
+        from agentflow.state.message_block import TextBlock, ImageBlock, MediaRef
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    TextBlock(text="Compare these two images:"),
+                    ImageBlock(
+                        media=MediaRef(
+                            kind="url",
+                            url="https://example.com/image1.jpg",
+                            mime_type="image/jpeg",
+                        )
+                    ),
+                    ImageBlock(
+                        media=MediaRef(
+                            kind="url",
+                            url="https://example.com/image2.jpg",
+                            mime_type="image/jpeg",
+                        )
+                    ),
+                ],
+            }
+        ]
+
+        system_instruction, google_contents = mixin._convert_to_google_format(messages)
+
+        # Assertions
+        assert len(google_contents) == 1
+        assert len(google_contents[0].parts) == 3
+        assert google_contents[0].parts[0].text == "Compare these two images:"
+        assert hasattr(google_contents[0].parts[1], "file_data")
+        assert hasattr(google_contents[0].parts[2], "file_data")
+
+    def test_convert_to_google_format_with_audio(self, mixin):
+        """Test conversion of message with audio."""
+        from agentflow.state.message_block import AudioBlock, MediaRef
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    AudioBlock(
+                        media=MediaRef(
+                            kind="url",
+                            url="https://example.com/audio.mp3",
+                            mime_type="audio/mp3",
+                        )
+                    ),
+                ],
+            }
+        ]
+
+        system_instruction, google_contents = mixin._convert_to_google_format(messages)
+
+        # Assertions
+        assert len(google_contents) == 1
+        assert len(google_contents[0].parts) == 1
+        assert hasattr(google_contents[0].parts[0], "file_data")
+        assert google_contents[0].parts[0].file_data.mime_type == "audio/mp3"
+
+    def test_convert_to_google_format_with_video(self, mixin):
+        """Test conversion of message with video."""
+        from agentflow.state.message_block import VideoBlock, MediaRef
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    VideoBlock(
+                        media=MediaRef(
+                            kind="url",
+                            url="https://example.com/video.mp4",
+                            mime_type="video/mp4",
+                        )
+                    ),
+                ],
+            }
+        ]
+
+        system_instruction, google_contents = mixin._convert_to_google_format(messages)
+
+        # Assertions
+        assert len(google_contents) == 1
+        assert len(google_contents[0].parts) == 1
+        assert hasattr(google_contents[0].parts[0], "file_data")
+        assert google_contents[0].parts[0].file_data.mime_type == "video/mp4"
+
+    def test_convert_to_google_format_backwards_compat(self, mixin):
+        """Test that text-only messages still work (backwards compatibility)."""
+        messages = [
+            {"role": "user", "content": "Hello, how are you?"},
+            {"role": "assistant", "content": "I'm doing well, thank you!"},
+        ]
+
+        system_instruction, google_contents = mixin._convert_to_google_format(messages)
+
+        # Assertions
+        assert len(google_contents) == 2
+        assert google_contents[0].role == "user"
+        assert google_contents[1].role == "model"
+        assert google_contents[0].parts[0].text == "Hello, how are you?"
+        assert google_contents[1].parts[0].text == "I'm doing well, thank you!"
+
+    def test_convert_image_block_invalid_base64(self, mixin):
+        """Test handling of invalid base64 data."""
+        from agentflow.state.message_block import ImageBlock, MediaRef
+
+        block = ImageBlock(
+            media=MediaRef(
+                kind="data",
+                data_base64="invalid!!!base64",
+                mime_type="image/jpeg",
+            )
+        )
+
+        # Should return None and log warning
+        result = mixin._convert_image_block_to_part(block)
+        assert result is None
+
+    def test_convert_to_google_format_assistant_with_tool_calls_and_content(self, mixin):
+        """Test conversion of assistant message with both content and tool calls."""
+        from agentflow.state.message_block import TextBlock
+
+        messages = [
+            {
+                "role": "assistant",
+                "content": [TextBlock(text="Let me search for that.")],
+                "tool_calls": [
+                    {
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": json.dumps({"query": "python"}),
+                        },
+                    }
+                ],
+            }
+        ]
+
+        system_instruction, google_contents = mixin._convert_to_google_format(messages)
+
+        # Assertions
+        assert len(google_contents) == 1
+        assert google_contents[0].role == "model"
+        assert len(google_contents[0].parts) == 2
+        # First part should be text
+        assert google_contents[0].parts[0].text == "Let me search for that."
+        # Second part should be function_call
+        assert hasattr(google_contents[0].parts[1], "function_call")
+        assert google_contents[0].parts[1].function_call.name == "search"
