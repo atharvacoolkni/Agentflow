@@ -5,6 +5,7 @@ provider-specific and execution-specific behavior into smaller modules.
 """
 
 from .constants import REASONING_DEFAULT
+from .anthropic import AgentAnthropicMixin
 from .execution import AgentExecutionMixin
 from .google import AgentGoogleMixin
 from .openai import AgentOpenAIMixin
@@ -14,6 +15,7 @@ from .skills import AgentSkillsMixin
 
 __all__ = [
     "REASONING_DEFAULT",
+    "AgentAnthropicMixin",
     "AgentExecutionMixin",
     "AgentGoogleMixin",
     "AgentOpenAIMixin",

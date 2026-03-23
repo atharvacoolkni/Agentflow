@@ -7,6 +7,7 @@ import os
 from typing import Any, Protocol
 
 from .constants import (
+    ANTHROPIC_OUTPUT_TYPES,
     CLIENT_CONSTRUCTOR_KWARGS,
     GOOGLE_OUTPUT_TYPES,
     OPENAI_OUTPUT_TYPES,
@@ -34,6 +35,12 @@ class AgentProviderMixin:
                 f"'{self.output_type}'. Supported types: {list(VALID_OUTPUT_TYPES)}"
             )
 
+        if self.provider == "anthropic" and self.output_type not in ANTHROPIC_OUTPUT_TYPES:
+            raise ValueError(
+                f"Anthropic provider doesn't support output_type='{self.output_type}'. "
+                f"Supported: {list(ANTHROPIC_OUTPUT_TYPES)}"
+            )
+
         if self.provider == "google" and self.output_type not in GOOGLE_OUTPUT_TYPES:
             raise ValueError(
                 f"Google provider doesn't support output_type='{self.output_type}'. "
@@ -56,6 +63,8 @@ class AgentProviderMixin:
             return "openai"
         if model_lower.startswith(("gemini-", "imagen-", "veo-", "chirp")):
             return "google"
+        if model_lower.startswith(("claude-",)):
+            return "anthropic"
 
         logger.info(
             "Could not auto-detect provider for model '%s'. Defaulting to 'openai'. "
@@ -96,6 +105,25 @@ class AgentProviderMixin:
                 return AsyncOpenAI(api_key=api_key, base_url=base_url, **client_kwargs)
             return AsyncOpenAI(api_key=api_key, **client_kwargs)
 
+        if provider == "anthropic":
+            try:
+                from anthropic import AsyncAnthropic  # noqa: PLC0415
+            except ImportError as exc:
+                raise ImportError(
+                    "anthropic SDK is required for Anthropic provider. "
+                    "Install it with: pip install anthropic"
+                ) from exc
+
+            api_key = self.llm_kwargs.get("api_key") or os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                logger.warning(
+                    "ANTHROPIC_API_KEY environment variable not set. "
+                    "API calls may fail."
+                )
+
+            logger.info("Creating Anthropic AsyncAnthropic client")
+            return AsyncAnthropic(api_key=api_key)
+
         if provider == "google":
             try:
                 from google import genai  # noqa: PLC0415
@@ -116,5 +144,5 @@ class AgentProviderMixin:
             return genai.Client(api_key=api_key)
 
         raise ValueError(
-            f"Unsupported provider: {provider}. Supported providers: 'openai', 'google'"
+            f"Unsupported provider: {provider}. Supported providers: 'openai', 'anthropic', 'google'"
         )

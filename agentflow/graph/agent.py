@@ -14,6 +14,7 @@ from agentflow.skills.models import SkillConfig
 from agentflow.state.message import Message
 
 from .agent_internal.constants import REASONING_DEFAULT
+from .agent_internal.anthropic import AgentAnthropicMixin
 from .agent_internal.execution import AgentExecutionMixin
 from .agent_internal.google import AgentGoogleMixin
 from .agent_internal.openai import AgentOpenAIMixin
@@ -26,6 +27,7 @@ logger = logging.getLogger("agentflow.agent")
 
 class Agent(
     AgentExecutionMixin,
+    AgentAnthropicMixin,
     AgentGoogleMixin,
     AgentOpenAIMixin,
     AgentProviderMixin,
@@ -107,6 +109,23 @@ class Agent(
                 - "video": Video generation
                 - "audio": Audio/TTS generation
             system_prompt: System prompt as list of message dicts.
+                Supports state variable interpolation using placeholders like ``{field_name}``.
+                At execution time, placeholders are replaced with actual values from the state.
+
+                Example with interpolation::
+
+                    class MyState(AgentState):
+                        user_name: str = "Guest"
+                        occasion: str = "casual"
+
+                    agent = Agent(
+                        model="gpt-4o",
+                        system_prompt=[{
+                            "role": "system",
+                            "content": "You are helping {user_name} with {occasion} planning."
+                        }]
+                    )
+                    # At runtime, placeholders are replaced with state values
             tools: List of tool functions, ToolNode instance, or None.
                 If list is provided, will be converted to ToolNode internally.
             tool_node_name: Name of the existing ToolNode. You can send list of tools
