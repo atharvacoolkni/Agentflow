@@ -134,7 +134,7 @@ class Agent(
             retry_config: Controls automatic retry with exponential back-off for
                 transient LLM errors (429, 500, 502, 503, 529).  Default is
                 ``True`` which uses ``RetryConfig()`` (3 retries, 1 s initial
-                delay, 2× backoff, 30 s cap).  Pass ``False`` or ``None`` to
+                delay, 2x backoff, 30 s cap).  Pass ``False`` or ``None`` to
                 disable.  Pass a ``RetryConfig`` instance for fine-grained
                 control::
 

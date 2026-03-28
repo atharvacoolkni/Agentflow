@@ -93,17 +93,15 @@ class AgentExecutionMixin:
         if status is not None and status in retry_cfg.retryable_status_codes:
             return True
         # Connection-level / transport errors are always retryable
-        if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+        if isinstance(exc, ConnectionError | TimeoutError | OSError):
             return True
         exc_name = type(exc).__name__.lower()
-        if any(
+        return any(
             keyword in exc_name
             for keyword in ("timeout", "connection", "unavailable", "serviceunav")
-        ):
-            return True
-        return False
+        )
 
-    async def _call_llm_with_retry(
+    async def _call_llm_with_retry(  # noqa: PLR0912
         self,
         messages: list[dict[str, Any]],
         tools: list | None = None,
@@ -135,7 +133,7 @@ class AgentExecutionMixin:
 
         last_exc: Exception | None = None
 
-        for attempt_idx, (model, provider, client, base_url) in enumerate(attempts):
+        for attempt_idx, (model, provider, fallback_client, base_url) in enumerate(attempts):
             is_fallback = attempt_idx > 0
 
             if is_fallback:
@@ -158,9 +156,10 @@ class AgentExecutionMixin:
                         self.model = model
                         self.provider = provider
                         self.base_url = base_url
-                        if client is None:
-                            client = self._create_client(provider, base_url)
-                        self.client = client
+                        active_client = fallback_client
+                        if active_client is None:
+                            active_client = self._create_client(provider, base_url)
+                        self.client = active_client
                         try:
                             result = await self._call_llm(messages, tools, stream, **kwargs)
                         finally:
