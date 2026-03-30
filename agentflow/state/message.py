@@ -232,15 +232,31 @@ class Message(BaseModel):
             >>> msg.text()
             'Hello!Result text.'
         """
+        if self.content is None:
+            return ""
+        if isinstance(self.content, str):
+            return self.content
+        if not isinstance(self.content, list):
+            return str(self.content)
+
         parts: list[str] = []
         for block in self.content:
             if isinstance(block, TextBlock):
-                parts.append(block.text)
+                parts.append(block.text or "")
             elif isinstance(block, ToolResultBlock):
                 if isinstance(block.output, str):
                     parts.append(str(block.output))
                 else:
-                    parts.append(json.dumps(block.output))
+                    parts.append(json.dumps(block.output, default=str))
+            elif isinstance(block, dict):
+                if block.get("type") == "text":
+                    parts.append(str(block.get("text") or ""))
+                elif block.get("type") == "tool_result":
+                    output = block.get("output")
+                    if isinstance(output, str):
+                        parts.append(output)
+                    else:
+                        parts.append(json.dumps(output, default=str))
 
         return "".join(parts)
 
