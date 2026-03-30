@@ -116,5 +116,5 @@ class AgentProviderMixin:
             return genai.Client(api_key=api_key)
 
         raise ValueError(
-            f"Unsupported provider: {provider}. Supported providers: 'openai', 'google'"
+            f"Unsupported provider: {provider}. " f"Supported providers: 'openai', 'google'"
         )

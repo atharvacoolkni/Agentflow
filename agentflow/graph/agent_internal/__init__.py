@@ -9,6 +9,7 @@ from .execution import AgentExecutionMixin
 from .google import AgentGoogleMixin
 from .openai import AgentOpenAIMixin
 from .providers import AgentProviderMixin
+from .skills import AgentSkillsMixin
 
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "AgentGoogleMixin",
     "AgentOpenAIMixin",
     "AgentProviderMixin",
+    "AgentSkillsMixin",
     "RetryConfig",
 ]

@@ -10,6 +10,7 @@ from typing import Any
 
 from agentflow.graph.base_agent import BaseAgent
 from agentflow.graph.tool_node import ToolNode
+from agentflow.skills.models import SkillConfig
 from agentflow.state.message import Message
 
 from .agent_internal.constants import DEFAULT_RETRY_CONFIG, REASONING_DEFAULT, RetryConfig
@@ -17,6 +18,7 @@ from .agent_internal.execution import AgentExecutionMixin
 from .agent_internal.google import AgentGoogleMixin
 from .agent_internal.openai import AgentOpenAIMixin
 from .agent_internal.providers import AgentProviderMixin
+from .agent_internal.skills import AgentSkillsMixin
 
 
 logger = logging.getLogger("agentflow.agent")
@@ -27,13 +29,14 @@ class Agent(
     AgentGoogleMixin,
     AgentOpenAIMixin,
     AgentProviderMixin,
+    AgentSkillsMixin,
     BaseAgent,
 ):
     """A smart node function wrapper for LLM interactions.
 
     This class handles common boilerplate for agent implementations including:
     - Automatic message conversion
-    - LLM calls via native provider SDKs (OpenAI, Anthropic, Google)
+    - LLM calls via native provider SDKs (OpenAI, Google)
     - Tool handling with conditional logic
     - Optional learning/RAG capabilities
     - Response conversion
@@ -51,13 +54,6 @@ class Agent(
             tools=[weather_tool],
         )
 
-        # Or with Anthropic
-        agent = Agent(
-            model="claude-3-5-sonnet-20241022",
-            provider="anthropic",
-            system_prompt="You are a helpful assistant",
-        )
-
         # Use it in a graph
         graph = StateGraph()
         graph.add_node("MAIN", agent)  # Agent acts as a node function
@@ -66,8 +62,8 @@ class Agent(
         ```
 
     Attributes:
-        model: Model identifier (e.g., "gpt-4o", "claude-3-5-sonnet-20241022")
-        provider: Provider name ("openai", "anthropic", "google")
+        model: Model identifier (e.g., "gpt-4o", "gemini-2.0-flash")
+        provider: Provider name ("openai", "google")
         system_prompt: System prompt string or list of message dicts
         tools: List of tool functions or ToolNode instance
         client: Optional custom client instance (escape hatch for power users)
@@ -87,7 +83,9 @@ class Agent(
         extra_messages: list[Message] | None = None,
         trim_context: bool = False,
         tools_tags: set[str] | None = None,
+        api_style: str = "chat",
         reasoning_config: dict[str, Any] | bool | None = REASONING_DEFAULT,  # type: ignore
+        skills: "SkillConfig | None" = None,
         retry_config: RetryConfig | bool | None = True,
         fallback_models: list[str | tuple[str, str]] | None = None,
         **kwargs,
@@ -104,6 +102,23 @@ class Agent(
                 - "video": Video generation
                 - "audio": Audio/TTS generation
             system_prompt: System prompt as list of message dicts.
+                Supports state variable interpolation using placeholders like ``{field_name}``.
+                At execution time, placeholders are replaced with actual values from the state.
+
+                Example with interpolation::
+
+                    class MyState(AgentState):
+                        user_name: str = "Guest"
+                        occasion: str = "casual"
+
+                    agent = Agent(
+                        model="gpt-4o",
+                        system_prompt=[{
+                            "role": "system",
+                            "content": "You are helping {user_name} with {occasion} planning."
+                        }]
+                    )
+                    # At runtime, placeholders are replaced with state values
             tools: List of tool functions, ToolNode instance, or None.
                 If list is provided, will be converted to ToolNode internally.
             tool_node_name: Name of the existing ToolNode. You can send list of tools
@@ -218,7 +233,7 @@ class Agent(
         """
         # Pop kwargs-only params before passing to parent
         base_url: str | None = kwargs.pop("base_url", None)
-        api_style: str = kwargs.pop("api_style", "chat")
+        # Note: api_style is already a named parameter, don't pop from kwargs
         # Call parent constructor
         super().__init__(
             model=model, system_prompt=system_prompt or [], tools=tools, base_url=base_url, **kwargs
@@ -289,3 +304,6 @@ class Agent(
             f"Agent initialized: model={model}, provider={self.provider}, "
             f"output_type={self.output_type}, has_tools={self._tool_node is not None}"
         )
+
+        # Skills setup (via mixin)
+        self._setup_skills(skills)

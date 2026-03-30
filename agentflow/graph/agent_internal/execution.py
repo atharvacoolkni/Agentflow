@@ -37,6 +37,20 @@ class AgentExecutionMixin:
         logger.debug("Converting %d tool functions to ToolNode", len(self.tools))
         return ToolNode(self.tools)
 
+    def get_tool_node(self) -> ToolNode | None:
+        """Return the agent's internal ToolNode.
+
+        Use this public method instead of accessing ``agent._tool_node``
+        directly when wiring the tool node into the graph. When skills are
+        enabled, the returned ToolNode already contains the ``set_skill`` tool.
+
+        Example::
+
+            agent = Agent(model="gpt-4o", tools=[my_tool], skills=SkillConfig(...))
+            graph.add_node("TOOL", agent.get_tool_node())
+        """
+        return self._tool_node
+
     async def _trim_context(
         self,
         state: AgentState,
@@ -282,8 +296,14 @@ class AgentExecutionMixin:
 
         state = await self._trim_context(state)
 
+        # Build effective system prompts (with trigger table if skills configured)
+        effective_system_prompt = list(self.system_prompt)
+
+        if hasattr(self, "_build_skill_prompts") and callable(self._build_skill_prompts):
+            effective_system_prompt = self._build_skill_prompts(state, self.system_prompt)
+
         messages = convert_messages(
-            system_prompts=self.system_prompt,
+            system_prompts=effective_system_prompt,
             state=state,
             extra_messages=self.extra_messages or [],
         )

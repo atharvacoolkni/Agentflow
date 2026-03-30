@@ -111,6 +111,19 @@ class BaseAgent(ABC):
             LLM response (format depends on implementation)
         """
 
+    def get_tool_node(self) -> "ToolNode | None":
+        """Return the agent's internal ToolNode, or None if not configured.
+
+        Use this instead of accessing ``agent._tool_node`` directly when you
+        need to register the tool node as a separate graph node.
+
+        Example::
+
+            agent = Agent(model="gpt-4o", tools=[my_tool])
+            graph.add_node("TOOL", agent.get_tool_node())
+        """
+        return None
+
     async def __call__(
         self,
         state: AgentState,
