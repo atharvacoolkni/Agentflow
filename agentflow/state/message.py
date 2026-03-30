@@ -241,24 +241,31 @@ class Message(BaseModel):
 
         parts: list[str] = []
         for block in self.content:
-            if isinstance(block, TextBlock):
-                parts.append(block.text or "")
-            elif isinstance(block, ToolResultBlock):
-                if isinstance(block.output, str):
-                    parts.append(str(block.output))
-                else:
-                    parts.append(json.dumps(block.output, default=str))
-            elif isinstance(block, dict):
-                if block.get("type") == "text":
-                    parts.append(str(block.get("text") or ""))
-                elif block.get("type") == "tool_result":
-                    output = block.get("output")
-                    if isinstance(output, str):
-                        parts.append(output)
-                    else:
-                        parts.append(json.dumps(output, default=str))
+            text = self._block_text(block)
+            if text is not None:
+                parts.append(text)
 
         return "".join(parts)
+
+    @staticmethod
+    def _block_text(block: Any) -> str | None:
+        text: str | None = None
+        if isinstance(block, TextBlock):
+            text = block.text or ""
+        elif isinstance(block, ToolResultBlock):
+            text = (
+                block.output
+                if isinstance(block.output, str)
+                else json.dumps(block.output, default=str)
+            )
+        elif isinstance(block, dict):
+            if block.get("type") == "text":
+                text = str(block.get("text") or "")
+            elif block.get("type") == "tool_result":
+                output = block.get("output")
+                text = output if isinstance(output, str) else json.dumps(output, default=str)
+
+        return text
 
     def attach_media(
         self,
