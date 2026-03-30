@@ -16,7 +16,7 @@ logger = logging.getLogger("agentflow.agent")
 class AgentGoogleMixin:
     """Google GenAI message conversion and request helpers."""
 
-    def _convert_to_google_format(  # noqa: PLR0912
+    def _convert_to_google_format(
         self,
         messages: list[dict[str, Any]],
     ) -> tuple[str | None, list]:
