@@ -36,16 +36,17 @@ vector store configuration). You can also use helper factory function
 """
 
 import logging
+import secrets
 from collections.abc import Awaitable, Iterable
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
 
 from injectq import InjectQ
 
 from agentflow.state import Message
 
 from .base_store import BaseStore
+from .qdrant_store import DEFAULT_COLLECTION
 from .store_schema import MemorySearchResult, MemoryType
 
 
@@ -148,8 +149,16 @@ class Mem0Store(BaseStore):
         except ValueError:
             memory_type = MemoryType.EPISODIC
 
+        _raw_id = raw.get("id")
+        if _raw_id is None:
+            _inj_id = InjectQ.get_instance().try_get("generated_id", None)
+            _raw_id = (
+                str(_inj_id)
+                if _inj_id is not None and not isinstance(_inj_id, Awaitable)
+                else secrets.token_hex(16)
+            )
         return MemorySearchResult(
-            id=metadata.get("memory_id", str(raw.get("id", uuid4()))),
+            id=metadata.get("memory_id", str(_raw_id)),
             content=raw.get("memory") or raw.get("data", ""),
             score=float(raw.get("score", 0.0) or 0.0),
             memory_type=memory_type,
@@ -169,12 +178,6 @@ class Mem0Store(BaseStore):
                     yield item
         else:  # pragma: no cover
             logger.debug("Unexpected Mem0 response type: %s", type(response))
-
-    async def generate_framework_id(self) -> str:
-        generated_id = InjectQ.get_instance().try_get("generated_id", str(uuid4()))
-        if isinstance(generated_id, Awaitable):
-            generated_id = await generated_id
-        return generated_id
 
     # ------------------------------------------------------------------
     # BaseStore required async operations
@@ -410,7 +413,7 @@ def create_mem0_store(
 def create_mem0_store_with_qdrant(
     qdrant_url: str,
     qdrant_api_key: str | None = None,
-    collection_name: str = "agentflow_memories",
+    collection_name: str = DEFAULT_COLLECTION,
     embedding_model: str = "text-embedding-ada-002",
     llm_model: str = "gpt-4o-mini",
     app_id: str = "agentflow_app",

@@ -7,6 +7,7 @@ from .base_embedding import BaseEmbedding
 
 HAS_GOOGLE = False
 
+
 try:
     from google import genai
 
@@ -20,7 +21,7 @@ class GoogleEmbedding(BaseEmbedding):
 
     def __init__(
         self,
-        model: str = "text-embedding-004",
+        model: str = "gemini-embedding-001",
         api_key: str | None = None,
         output_dimensionality: int | None = None,
     ) -> None:

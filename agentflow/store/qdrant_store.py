@@ -35,6 +35,11 @@ except ImportError:
 
 logger = logging.getLogger("agentflow.store")
 
+# Default collection name used when none is specified via config or constructor.
+# Centralised here so factory functions and the class share the same value
+# without duplicating the magic string.
+DEFAULT_COLLECTION = "agentflow_memories"
+
 
 class QdrantStore(BaseStore):
     """
@@ -74,7 +79,7 @@ class QdrantStore(BaseStore):
         port: int | None = None,
         url: str | None = None,
         api_key: str | None = None,
-        default_collection: str = "agentflow_memories",
+        collection: str | None = None,
         distance_metric: DistanceMetric = DistanceMetric.COSINE,
         **kwargs: Any,
     ):
@@ -88,7 +93,7 @@ class QdrantStore(BaseStore):
             port: Port for remote Qdrant server
             url: URL for Qdrant cloud
             api_key: API key for Qdrant cloud
-            default_collection: Default collection name
+            collection: Collection name to use (defaults to DEFAULT_COLLECTION)
             distance_metric: Default distance metric
             **kwargs: Additional client parameters
         """
@@ -115,7 +120,7 @@ class QdrantStore(BaseStore):
         self._collection_cache = set()
         self._setup_lock = asyncio.Lock()
 
-        self.default_collection = default_collection
+        self.collection = collection or DEFAULT_COLLECTION
         self._default_distance_metric = distance_metric
 
         logger.info(f"Initialized QdrantStore with config: path={path}, host={host}, url={url}")
@@ -123,7 +128,7 @@ class QdrantStore(BaseStore):
     async def asetup(self) -> Any:
         """Set up the store and ensure default collection exists."""
         async with self._setup_lock:
-            await self._ensure_collection_exists(self.default_collection)
+            await self._ensure_collection_exists(self.collection)
         return True
 
     def _distance_metric_to_qdrant(self, metric: DistanceMetric):
@@ -142,7 +147,7 @@ class QdrantStore(BaseStore):
         """Extract user_id, thread_id, and collection from config."""
         user_id = config.get("user_id")
         thread_id = config.get("thread_id")
-        collection = config.get("collection", self.default_collection)
+        collection = config.get("collection", self.collection)
         return user_id, thread_id, collection
 
     def _point_to_search_result(self, point) -> MemorySearchResult:
@@ -236,7 +241,7 @@ class QdrantStore(BaseStore):
         if collection in self._collection_cache:
             return
 
-        from qdrant_client.http.models import VectorParams
+        from qdrant_client.http.models import PayloadSchemaType, VectorParams
 
         try:
             # Check if collection exists
@@ -255,6 +260,33 @@ class QdrantStore(BaseStore):
                     ),
                 )
                 logger.info(f"Created collection: {collection}")
+
+            # Ensure payload indexes exist for filterable fields.
+            # Required for remote/cloud Qdrant where full scan is disabled.
+            # Qdrant's create_payload_index is idempotent — calling it on an
+            # already-indexed field is a no-op, so this is safe for both new
+            # and pre-existing collections.
+            for field_name in (
+                "user_id",
+                "memory_type",
+                "category",
+                "memory_key",
+            ):
+                try:
+                    await self.client.create_payload_index(
+                        collection_name=collection,
+                        field_name=field_name,
+                        field_schema=PayloadSchemaType.KEYWORD,
+                    )
+                except Exception:
+                    # Best-effort: log and continue so one failing index
+                    # doesn't prevent the collection from being usable.
+                    logger.debug(
+                        "Payload index for '%s' on '%s' may already exist or failed",
+                        field_name,
+                        collection,
+                    )
+            logger.info(f"Ensured payload indexes for collection: {collection}")
 
             self._collection_cache.add(collection)
         except Exception as e:
@@ -315,7 +347,6 @@ class QdrantStore(BaseStore):
         # Ensure collection exists
         await self._ensure_collection_exists(collection)
 
-        # Create memory record
         record = self._create_memory_record(
             content=content,
             user_id=user_id,
@@ -324,6 +355,7 @@ class QdrantStore(BaseStore):
             category=category,
             metadata=metadata,
         )
+        record.id = kwargs.get("memory_id") or await self.generate_framework_id()
 
         # Generate embedding
         text_content = self._prepare_content(content)
@@ -372,8 +404,12 @@ class QdrantStore(BaseStore):
         max_tokens: int = 4000,
         **kwargs,
     ) -> list[MemorySearchResult]:
-        """Search memories by content similarity."""
-        user_id, thread_id, collection = self._extract_config_values(config)
+        """Search memories by content similarity.
+
+        Long-term memory is cross-thread — thread_id is intentionally excluded
+        from the search filter so results span all conversations for the user.
+        """
+        user_id, _thread_id, collection = self._extract_config_values(config)
 
         # Ensure collection exists
         await self._ensure_collection_exists(collection)
@@ -383,10 +419,9 @@ class QdrantStore(BaseStore):
         if not query_vector or len(query_vector) != self.embedding.dimension:
             raise ValueError("Embedding service returned invalid vector")
 
-        # Build filter
+        # Build filter — search by user only; thread_id is excluded
         search_filter = self._build_qdrant_filter(
             user_id=user_id,
-            thread_id=thread_id,
             memory_type=memory_type,
             category=category,
             filters=filters,
@@ -414,7 +449,7 @@ class QdrantStore(BaseStore):
         **kwargs,
     ) -> MemorySearchResult | None:
         """Get a specific memory by ID."""
-        user_id, thread_id, collection = self._extract_config_values(config)
+        user_id, _thread_id, collection = self._extract_config_values(config)
 
         try:
             # Ensure collection exists
@@ -432,10 +467,9 @@ class QdrantStore(BaseStore):
             point = points[0]
             result = self._point_to_search_result(point)
 
-            # Verify user/agent access if specified
+            # Verify user access only — thread_id is intentionally not checked
+            # because long-term memory is cross-thread.
             if user_id and result.user_id != user_id:
-                return None
-            if thread_id and result.thread_id != thread_id:
                 return None
 
             return result
@@ -486,18 +520,17 @@ class QdrantStore(BaseStore):
         """Update an existing memory."""
         from qdrant_client.http.models import PointStruct
 
-        user_id, thread_id, collection = self._extract_config_values(config)
+        user_id, _thread_id, collection = self._extract_config_values(config)
 
         # Get existing memory
         existing = await self.aget(config, memory_id)
         if not existing:
             raise ValueError(f"Memory {memory_id} not found")
 
-        # Verify user/agent access if specified
+        # Verify user access only — thread_id is not an access-control boundary
+        # for long-term memory (memories are shared across all threads for a user).
         if user_id and existing.user_id != user_id:
             raise PermissionError("User does not have permission to update this memory")
-        if thread_id and existing.thread_id != thread_id:
-            raise PermissionError("Thread does not have permission to update this memory")
 
         # Prepare new content
         text_content = self._prepare_content(content)
@@ -506,18 +539,35 @@ class QdrantStore(BaseStore):
             raise ValueError("Embedding service returned invalid vector")
 
         # Update payload
-        updated_metadata = {**existing.metadata}
-        if metadata:
-            updated_metadata.update(metadata)
+        replace_metadata = kwargs.get("replace_metadata", False)
+        if replace_metadata:
+            updated_metadata = metadata or {}
+        else:
+            updated_metadata = {**existing.metadata}
+            if metadata:
+                updated_metadata.update(metadata)
+
+        # Strip system fields from metadata so they don't overwrite the
+        # explicit values we set below (existing.metadata mirrors the full
+        # Qdrant payload, including "content").
+        _system_keys = {
+            "content",
+            "user_id",
+            "thread_id",
+            "memory_type",
+            "category",
+            "timestamp",
+        }
+        extra_metadata = {k: v for k, v in updated_metadata.items() if k not in _system_keys}
 
         updated_payload = {
+            **extra_metadata,
             "content": text_content,
             "user_id": existing.user_id,
             "thread_id": existing.thread_id,
             "memory_type": existing.memory_type.value,
             "category": updated_metadata.get("category", "general"),
             "timestamp": datetime.now().isoformat(),
-            **updated_metadata,
         }
 
         # Create updated point
@@ -544,18 +594,17 @@ class QdrantStore(BaseStore):
         """Delete a memory by ID."""
         from qdrant_client.http import models
 
-        user_id, thread_id, collection = self._extract_config_values(config)
+        user_id, _thread_id, collection = self._extract_config_values(config)
 
         # Verify memory exists and user has access
         existing = await self.aget(config, memory_id)
         if not existing:
             raise ValueError(f"Memory {memory_id} not found")
 
-        # verify user/agent access if specified
+        # Verify user access only — thread_id is not an access-control boundary
+        # for long-term memory.
         if user_id and existing.user_id != user_id:
             raise PermissionError("User does not have permission to delete this memory")
-        if thread_id and existing.thread_id != thread_id:
-            raise PermissionError("Thread does not have permission to delete this memory")
 
         # Delete from Qdrant
         await self.client.delete(
@@ -605,12 +654,14 @@ class QdrantStore(BaseStore):
 def create_local_qdrant_store(
     path: str,
     embedding: BaseEmbedding,
+    collection: str = DEFAULT_COLLECTION,
     **kwargs,
 ) -> QdrantStore:
     """Create a local Qdrant store."""
     return QdrantStore(
         embedding=embedding,
         path=path,
+        collection=collection,
         **kwargs,
     )
 
@@ -619,6 +670,7 @@ def create_remote_qdrant_store(
     host: str,
     port: int,
     embedding: BaseEmbedding,
+    collection: str = DEFAULT_COLLECTION,
     **kwargs,
 ) -> QdrantStore:
     """Create a remote Qdrant store."""
@@ -626,6 +678,7 @@ def create_remote_qdrant_store(
         embedding=embedding,
         host=host,
         port=port,
+        collection=collection,
         **kwargs,
     )
 
@@ -634,6 +687,7 @@ def create_cloud_qdrant_store(
     url: str,
     api_key: str,
     embedding: BaseEmbedding,
+    collection: str = DEFAULT_COLLECTION,
     **kwargs,
 ) -> QdrantStore:
     """Create a cloud Qdrant store."""
@@ -641,5 +695,6 @@ def create_cloud_qdrant_store(
         embedding=embedding,
         url=url,
         api_key=api_key,
+        collection=collection,
         **kwargs,
     )

@@ -123,7 +123,7 @@ class TestQdrantStore:
             )
             
             assert store.embedding == mock_embedding_service
-            assert store.default_collection == "agentflow_memories"
+            assert store.collection == "agentflow_memories"
             mock_client.assert_called_once()
 
     @pytest.mark.asyncio
@@ -142,6 +142,64 @@ class TestQdrantStore:
         await qdrant_store._ensure_collection_exists("test_collection")
         
         mock_qdrant_client.create_collection.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_collection_creation_creates_payload_indexes(self, qdrant_store, mock_qdrant_client):
+        """Test that payload indexes are created for all filterable fields on new collections."""
+        from qdrant_client.http.models import PayloadSchemaType
+
+        mock_qdrant_client.get_collections.return_value = MagicMock(collections=[])
+
+        await qdrant_store._ensure_collection_exists("test_collection")
+
+        expected_fields = ["user_id", "memory_type", "category", "memory_key"]
+        assert mock_qdrant_client.create_payload_index.call_count == len(expected_fields)
+
+        called_fields = [
+            call.kwargs["field_name"]
+            for call in mock_qdrant_client.create_payload_index.call_args_list
+        ]
+        assert called_fields == expected_fields
+
+        for call in mock_qdrant_client.create_payload_index.call_args_list:
+            assert call.kwargs["collection_name"] == "test_collection"
+            assert call.kwargs["field_schema"] == PayloadSchemaType.KEYWORD
+
+    @pytest.mark.asyncio
+    async def test_payload_index_failure_is_best_effort(self, qdrant_store, mock_qdrant_client):
+        """Test that individual payload index failures are caught and don't prevent caching."""
+        mock_qdrant_client.get_collections.return_value = MagicMock(collections=[])
+        mock_qdrant_client.create_payload_index.side_effect = Exception("index creation failed")
+
+        # Should NOT raise — individual index failures are best-effort.
+        await qdrant_store._ensure_collection_exists("test_collection")
+
+        # Collection should still be cached.
+        assert "test_collection" in qdrant_store._collection_cache
+        # All 4 fields should have been attempted.
+        assert mock_qdrant_client.create_payload_index.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_existing_collection_ensures_payload_indexes(self, qdrant_store, mock_qdrant_client):
+        """Test that payload indexes are ensured even when the collection already exists."""
+        from qdrant_client.http.models import PayloadSchemaType
+
+        existing = MagicMock()
+        existing.name = "test_collection"
+        mock_qdrant_client.get_collections.return_value = MagicMock(collections=[existing])
+
+        await qdrant_store._ensure_collection_exists("test_collection")
+
+        mock_qdrant_client.create_collection.assert_not_called()
+        # Indexes should still be created (idempotent) for existing collections.
+        expected_fields = ["user_id", "memory_type", "category", "memory_key"]
+        assert mock_qdrant_client.create_payload_index.call_count == len(expected_fields)
+
+        called_fields = [
+            call.kwargs["field_name"]
+            for call in mock_qdrant_client.create_payload_index.call_args_list
+        ]
+        assert called_fields == expected_fields
 
     @pytest.mark.asyncio
     async def test_collection_exists_cache(self, qdrant_store, mock_qdrant_client):
@@ -208,6 +266,16 @@ class TestQdrantStore:
         assert results[0].content == "test content"
         assert results[0].score == 0.95
         mock_qdrant_client.search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_asearch_does_not_filter_by_thread_id(self, qdrant_store, mock_qdrant_client, sample_config):
+        """LTM search is cross-thread; thread_id must NOT be passed to the filter."""
+        mock_qdrant_client.search.return_value = []
+
+        with patch.object(qdrant_store, "_build_qdrant_filter", wraps=qdrant_store._build_qdrant_filter) as mock_filter:
+            await qdrant_store.asearch(config=sample_config, query="test")
+            call_kwargs = mock_filter.call_args.kwargs
+            assert "thread_id" not in call_kwargs or call_kwargs.get("thread_id") is None
 
     @pytest.mark.asyncio
     async def test_aget(self, qdrant_store, mock_qdrant_client, sample_config):
@@ -359,7 +427,7 @@ class TestQdrantStore:
 
         assert user_id is None
         assert thread_id is None
-        assert collection == qdrant_store.default_collection
+        assert collection == qdrant_store.collection
 
     def test_prepare_content_string(self, qdrant_store):
         """Test content preparation with string."""
