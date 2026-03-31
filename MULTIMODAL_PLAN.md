@@ -693,7 +693,7 @@ AFTER (fixed):
 ### Sprint 4: API Layer — File Upload Endpoints (pyagenity-api)
 **Goal**: REST API support for multimodal messages. Document extraction (Sprint 2) is already wired in; this sprint adds the upload endpoints, invoke/stream multimodal support, and wires everything together.
 
-- [ ] **4.1** Add file upload endpoint
+- [x] **4.1** Add file upload endpoint
   ```
   POST /v1/files/upload
   Content-Type: multipart/form-data
@@ -711,7 +711,7 @@ AFTER (fixed):
   - For documents (PDF, DOCX, etc.): store binary **and** run `DocumentPipeline.extract()`, return both `file_id` and `extracted_text`
   - Enforce `MEDIA_MAX_SIZE_MB` limit
 
-- [ ] **4.2** Add file retrieval endpoint
+- [x] **4.2** Add file retrieval endpoint
   ```
   GET /v1/files/{file_id}
   → Returns file binary with correct Content-Type
@@ -720,7 +720,7 @@ AFTER (fixed):
   → Returns file metadata (filename, mime_type, size_bytes, extracted_text if available)
   ```
 
-- [ ] **4.3** Update graph invoke/stream endpoints to accept multimodal messages
+- [x] **4.3** Update graph invoke/stream endpoints to accept multimodal messages
   - `GraphInputSchema.messages` already accepts `Message` with `ContentBlock` — no schema change needed
   - Ensure JSON deserialization of `ImageBlock`, `DocumentBlock` etc. works correctly in API request
   - When a `DocumentBlock` with `file_id` is present in an incoming message:
@@ -751,13 +751,13 @@ AFTER (fixed):
     }
     ```
 
-- [ ] **4.4** Add multimodal config endpoint
+- [x] **4.4** Add multimodal config endpoint
   ```
   GET /v1/config/multimodal → returns current config
   PUT /v1/config/multimodal → update config (admin)
   ```
 
-- [ ] **4.5** Wire up `MediaProcessor`, `MediaStore`, and `DocumentPipeline` in API server startup
+- [x] **4.5** Wire up `MediaProcessor`, `MediaStore`, and `DocumentPipeline` in API server startup
   - Configure via environment variables / settings:
     - `MEDIA_STORAGE_TYPE=local|memory|s3|gcs|cloud`
     - `MEDIA_STORAGE_PATH=./uploads`
@@ -765,61 +765,61 @@ AFTER (fixed):
     - `DOCUMENT_HANDLING=extract_text|pass_raw|skip`
   - `DocumentPipeline` instantiated once at startup, injected via FastAPI dependency
 
-- [ ] **4.6** Write API tests
+- [x] **4.6** Write API tests
 
 ### Sprint 5: Client SDK Support (agentflow-react)
 **Goal**: TypeScript client support for multimodal
 
-- [ ] **5.1** Update TypeScript message types
+- [x] **5.1** Update TypeScript message types
   - Add `ImageBlock`, `AudioBlock`, `DocumentBlock` types matching Python models
   - Update `ContentBlock` union type
 
-- [ ] **5.2** Add file upload client methods
+- [x] **5.2** Add file upload client methods
   ```typescript
   client.files.upload(file: File | Blob): Promise<FileRef>
   client.files.get(fileId: string): Promise<FileInfo>
   ```
 
-- [ ] **5.3** Add multimodal message helpers
+- [x] **5.3** Add multimodal message helpers
   ```typescript
   Message.withImage(text: string, imageUrl: string): Message
   Message.withFile(text: string, file: FileRef): Message
   ```
 
-- [ ] **5.4** Update playground/UI components
+- [x] **5.4** Update playground/UI components
   - File upload button in chat input
   - Image preview in message bubbles
   - Document icon/preview for PDFs
   - Drag & drop support
 
-- [ ] **5.5** Write client tests
+- [x] **5.5** Write client tests
 
 ### Sprint 6: Advanced Features & Polish
 **Goal**: Production readiness
 
-- [ ] **6.1** Image processing utilities
+- [x] **6.1** Image processing utilities
   - Auto-resize large images before sending
   - Thumbnail generation for storage
   - PIL-based processing option (convert to JPEG, optimize)
   - EXIF rotation handling
 
-- [ ] **6.2** Provider-specific optimizations
+- [x] **6.2** Provider-specific optimizations
   - Google: Use File API for large files (>20MB)
   - OpenAI: Use file_search for PDFs when available
   - Caching: Don't re-upload same file to provider
 
-- [ ] **6.3** Streaming support for multimodal
+- [x] **6.3** Streaming support for multimodal
   - Ensure streaming responses with images work correctly
   - Handle image generation streaming (progressive)
 
-- [ ] **6.4** Security hardening
+- [x] **6.4** Security hardening
   - File type validation (magic bytes, not just extension)
   - Max file size enforcement
   - Virus scanning hook (optional)
   - Rate limiting on uploads
   - Sanitize filenames
 
-- [ ] **6.5** Documentation
+- [x] **6.5** Documentation
   - Multimodal usage guide
   - API reference for file endpoints
   - Configuration guide
