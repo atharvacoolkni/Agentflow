@@ -13,7 +13,7 @@ from agentflow.adapters.llm.model_response_converter import ModelResponseConvert
 from agentflow.graph.tool_node import ToolNode
 from agentflow.state import AgentState
 from agentflow.state.base_context import BaseContextManager
-from agentflow.utils.converter import convert_messages
+from agentflow.utils.converter import convert_messages, strip_media_blocks
 
 from .constants import RetryConfig
 
@@ -307,6 +307,16 @@ class AgentExecutionMixin:
             state=state,
             extra_messages=self.extra_messages or [],
         )
+
+        # Multi-agent safety: strip media blocks for text-only agents.
+        # When an agent has no multimodal_config, it cannot process images,
+        # audio, video, or documents — so we remove them.  This handles the
+        # case where a multimodal agent earlier in the graph added media to
+        # the shared state and a downstream text-only agent inherits it.
+        multimodal_config = getattr(self, "multimodal_config", None)
+        if multimodal_config is None:
+            messages = strip_media_blocks(messages)
+
         is_stream = config.get("is_stream", False)
 
         if state.context and state.context[-1].role == "tool":

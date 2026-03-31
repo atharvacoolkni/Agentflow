@@ -27,6 +27,9 @@ from agentflow.state.message import (
     generate_id,
 )
 from agentflow.state.message_block import (
+    AudioBlock,
+    ImageBlock,
+    MediaRef,
     ReasoningBlock,
     TextBlock,
     ToolCallBlock,
@@ -102,12 +105,20 @@ class OpenAIResponsesConverter(BaseConverter):
                 t = self._extract_text_from_message_item(item)
                 if t:
                     blocks.append(TextBlock(text=t))
+                # Also extract any media blocks from message content
+                media_blocks = self._extract_media_from_message_item(item)
+                blocks.extend(media_blocks)
 
             elif item_type == "function_call":
                 tb, raw = self._extract_tool_call_from_item(item)
                 if tb:
                     blocks.append(tb)
                     tool_calls_raw.append(raw)
+
+            elif item_type in ("image_generation_call", "image_generation"):
+                img_block = self._extract_image_generation(item)
+                if img_block:
+                    blocks.append(img_block)
 
         # --- build Message ------------------------------------------------
         resp_id = getattr(response, "id", None)
@@ -252,6 +263,27 @@ class OpenAIResponsesConverter(BaseConverter):
                             if r:
                                 accumulated_reasoning += ("\n" + r) if accumulated_reasoning else r
 
+                        elif itype == "message":
+                            # Extract media blocks from completed message items
+                            media_blocks = self._extract_media_from_message_item(item)
+                            if media_blocks:
+                                yield Message(
+                                    message_id=generate_id(None),
+                                    role="assistant",
+                                    content=media_blocks,
+                                    delta=True,
+                                )
+
+                        elif itype in ("image_generation_call", "image_generation"):
+                            img_block = self._extract_image_generation(item)
+                            if img_block:
+                                yield Message(
+                                    message_id=generate_id(None),
+                                    role="assistant",
+                                    content=[img_block],
+                                    delta=True,
+                                )
+
                 # Stream completed — we'll build the final message below
                 elif event_type == "response.completed":
                     # Extract usage from the completed response if available
@@ -319,6 +351,27 @@ class OpenAIResponsesConverter(BaseConverter):
                         r = self._extract_reasoning_from_item(item)
                         if r:
                             accumulated_reasoning += ("\n" + r) if accumulated_reasoning else r
+                    elif item and getattr(item, "type", "") == "message":
+                        media_blocks = self._extract_media_from_message_item(item)
+                        if media_blocks:
+                            yield Message(
+                                message_id=generate_id(None),
+                                role="assistant",
+                                content=media_blocks,
+                                delta=True,
+                            )
+                    elif item and getattr(item, "type", "") in (
+                        "image_generation_call",
+                        "image_generation",
+                    ):
+                        img_block = self._extract_image_generation(item)
+                        if img_block:
+                            yield Message(
+                                message_id=generate_id(None),
+                                role="assistant",
+                                content=[img_block],
+                                delta=True,
+                            )
                 elif event_type == "response.completed":
                     completed_response = getattr(event, "response", None)
                     if completed_response:
@@ -388,6 +441,98 @@ class OpenAIResponsesConverter(BaseConverter):
             elif isinstance(entry, dict) and entry.get("type") == "output_text":
                 parts.append(entry.get("text", ""))
         return "\n".join(parts) if parts else ""
+
+    @staticmethod
+    def _extract_media_from_message_item(item: Any) -> list:
+        """Extract media blocks (images, audio) from a ``type='message'`` item.
+
+        The Responses API can return ``output_image`` or ``output_audio``
+        entries in the message content alongside ``output_text``.
+        """
+        content_list = getattr(item, "content", []) or []
+        blocks: list = []
+        for entry in content_list:
+            entry_type = getattr(entry, "type", None) or (
+                entry.get("type") if isinstance(entry, dict) else None
+            )
+
+            if entry_type == "output_image":
+                # output_image has image_url (URL string) or image_data (base64)
+                url = getattr(entry, "image_url", None) or (
+                    entry.get("image_url") if isinstance(entry, dict) else None
+                )
+                data = getattr(entry, "image_data", None) or (
+                    entry.get("image_data") if isinstance(entry, dict) else None
+                )
+                if data:
+                    blocks.append(
+                        ImageBlock(
+                            media=MediaRef(
+                                kind="data",
+                                data_base64=data,
+                                mime_type="image/png",
+                            )
+                        )
+                    )
+                elif url:
+                    blocks.append(
+                        ImageBlock(
+                            media=MediaRef(
+                                kind="url",
+                                url=url,
+                                mime_type="image/png",
+                            )
+                        )
+                    )
+
+            elif entry_type == "output_audio":
+                data = getattr(entry, "data", None) or (
+                    entry.get("data") if isinstance(entry, dict) else None
+                )
+                transcript = getattr(entry, "transcript", None) or (
+                    entry.get("transcript") if isinstance(entry, dict) else None
+                )
+                if data:
+                    blocks.append(
+                        AudioBlock(
+                            media=MediaRef(kind="data", data_base64=data, mime_type="audio/wav"),
+                            transcript=transcript,
+                        )
+                    )
+
+        return blocks
+
+    @staticmethod
+    def _extract_image_generation(item: Any) -> ImageBlock | None:
+        """Extract image block from ``type='image_generation_call'`` items.
+
+        The ``result`` field contains the base64-encoded image data.
+        """
+        result = getattr(item, "result", None)
+        if result is None and isinstance(item, dict):
+            result = item.get("result")
+
+        if not result:
+            return None
+
+        # result can be base64 string or an object with .data / .b64_json
+        if isinstance(result, str):
+            b64 = result
+        else:
+            b64 = getattr(result, "b64_json", None) or getattr(result, "data", None)
+            if not b64 and isinstance(result, dict):
+                b64 = result.get("b64_json") or result.get("data")
+
+        if not b64:
+            return None
+
+        return ImageBlock(
+            media=MediaRef(
+                kind="data",
+                data_base64=b64,
+                mime_type="image/png",
+            )
+        )
 
     @staticmethod
     def _extract_tool_call_from_item(item: Any) -> tuple[ToolCallBlock | None, dict]:

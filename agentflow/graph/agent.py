@@ -10,6 +10,7 @@ from typing import Any
 
 from agentflow.graph.base_agent import BaseAgent
 from agentflow.graph.tool_node import ToolNode
+from agentflow.media.config import MultimodalConfig
 from agentflow.skills.models import SkillConfig
 from agentflow.state.message import Message
 
@@ -88,6 +89,7 @@ class Agent(
         skills: "SkillConfig | None" = None,
         retry_config: RetryConfig | bool | None = True,
         fallback_models: list[str | tuple[str, str]] | None = None,
+        multimodal_config: MultimodalConfig | None = None,
         **kwargs,
     ):
         """Initialize an Agent node.
@@ -307,3 +309,6 @@ class Agent(
 
         # Skills setup (via mixin)
         self._setup_skills(skills)
+
+        # Multimodal configuration
+        self.multimodal_config = multimodal_config

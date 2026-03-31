@@ -21,6 +21,8 @@ from .tool_node import ToolNode
 
 
 if TYPE_CHECKING:
+    from agentflow.media.storage.base import BaseMediaStore
+
     from .compiled_graph import CompiledGraph
 
 
@@ -433,6 +435,7 @@ class StateGraph[StateT: AgentState]:
         self,
         checkpointer: BaseCheckpointer[StateT] | None = None,
         store: BaseStore | None = None,
+        media_store: "BaseMediaStore | None" = None,
         interrupt_before: list[str] | None = None,
         interrupt_after: list[str] | None = None,
         callback_manager: CallbackManager = CallbackManager(),
@@ -443,6 +446,7 @@ class StateGraph[StateT: AgentState]:
         Args:
             checkpointer: Checkpointer for state persistence
             store: Store for additional data
+            media_store: Optional media storage backend for multimodal content
             debug: Enable debug mode
             interrupt_before: List of node names to interrupt before execution
             interrupt_after: List of node names to interrupt after execution
@@ -518,6 +522,15 @@ class StateGraph[StateT: AgentState]:
             allow_none=True,
             allow_concrete=True,
         )
+        # Bind media store for multimodal content
+        if media_store is not None:
+            from agentflow.media.storage.base import BaseMediaStore
+
+            self._container.bind_instance(
+                BaseMediaStore,
+                media_store,
+                allow_concrete=True,
+            )
         self._container.bind_instance(
             CallbackManager,
             callback_manager,

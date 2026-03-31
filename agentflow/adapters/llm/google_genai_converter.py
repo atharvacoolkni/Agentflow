@@ -298,6 +298,14 @@ class GoogleGenAIConverter(BaseConverter):
 
                 tools_calls.append(tool_call_dict)
 
+            # Handle inline media (images, audio, video) in streaming chunks
+            if hasattr(part, "inline_data") and part.inline_data:
+                self._process_inline_media_part(part, content_blocks)
+
+            # Handle file media in streaming chunks
+            if hasattr(part, "file_data") and part.file_data:
+                self._process_file_media_part(part, content_blocks)
+
         return text_part, reasoning_part, content_blocks, tools_calls
 
     def _process_chunk(

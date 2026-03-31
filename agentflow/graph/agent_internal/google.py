@@ -129,13 +129,90 @@ class AgentGoogleMixin:
         )
 
     def _handle_regular_message(self, content: Any, role: str) -> Any:
-        """Handle regular text messages (assistant or user)."""
+        """Handle regular text or multimodal messages (assistant or user).
+
+        When *content* is a list of OpenAI-style content parts (produced by
+        ``_build_content`` in the converter), each part is translated to a
+        ``google.genai.types.Part``.  Plain strings are handled as before.
+        """
         from google.genai import types
+
+        if isinstance(content, list):
+            parts = self._content_parts_to_google(content)
+            if not parts:
+                parts = [types.Part(text="")]
+            return types.Content(role=role, parts=parts)
 
         return types.Content(
             role=role,
             parts=[types.Part(text=str(content) if content else "")],
         )
+
+    def _content_parts_to_google(self, parts: list[dict[str, Any]]) -> list[Any]:
+        """Convert a list of OpenAI-style content parts to Google types.Part objects."""
+        import base64 as _b64
+
+        from google.genai import types
+
+        google_parts: list[types.Part] = []
+        for part in parts:
+            part_type = part.get("type", "")
+
+            if part_type == "text":
+                text = part.get("text", "")
+                if text:
+                    google_parts.append(types.Part(text=text))
+
+            elif part_type == "image_url":
+                image_info = part.get("image_url", {})
+                url = image_info.get("url", "")
+                if url.startswith("data:"):
+                    # data:image/jpeg;base64,/9j/4AAQ...
+                    header, _, b64_data = url.partition(",")
+                    mime = header.split(":")[1].split(";")[0] if ":" in header else "image/png"
+                    raw = _b64.b64decode(b64_data)
+                    google_parts.append(types.Part.from_bytes(data=raw, mime_type=mime))
+                else:
+                    # External URL
+                    google_parts.append(types.Part.from_uri(file_uri=url, mime_type="image/jpeg"))
+
+            elif part_type == "input_audio":
+                audio_info = part.get("input_audio", {})
+                b64_data = audio_info.get("data", "")
+                fmt = audio_info.get("format", "wav")
+                if b64_data:
+                    raw = _b64.b64decode(b64_data)
+                    google_parts.append(types.Part.from_bytes(data=raw, mime_type=f"audio/{fmt}"))
+
+            elif part_type == "document":
+                # Document content — extracted text or raw file bytes
+                doc_info = part.get("document", {})
+                if isinstance(doc_info, dict) and doc_info.get("text"):
+                    google_parts.append(types.Part(text=doc_info["text"]))
+                elif isinstance(doc_info, dict) and doc_info.get("data"):
+                    mime = doc_info.get("mime_type", "application/pdf")
+                    raw = _b64.b64decode(doc_info["data"])
+                    google_parts.append(types.Part.from_bytes(data=raw, mime_type=mime))
+                elif isinstance(doc_info, dict) and doc_info.get("url"):
+                    mime = doc_info.get("mime_type", "application/pdf")
+                    google_parts.append(
+                        types.Part.from_uri(file_uri=doc_info["url"], mime_type=mime)
+                    )
+
+            elif part_type == "video":
+                # Video content — Google GenAI supports video natively
+                video_info = part.get("video", {})
+                if isinstance(video_info, dict) and video_info.get("data"):
+                    mime = video_info.get("mime_type", "video/mp4")
+                    raw = _b64.b64decode(video_info["data"])
+                    google_parts.append(types.Part.from_bytes(data=raw, mime_type=mime))
+                elif isinstance(video_info, dict) and video_info.get("url"):
+                    mime = video_info.get("mime_type", "video/mp4")
+                    google_parts.append(
+                        types.Part.from_uri(file_uri=video_info["url"], mime_type=mime)
+                    )
+
+        return google_parts
 
     def _convert_tools_to_google_format(self, tools: list) -> list:
         """Convert OpenAI-style tool definitions into Google FunctionDeclarations."""
