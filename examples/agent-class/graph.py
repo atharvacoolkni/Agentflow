@@ -9,7 +9,7 @@ load_dotenv()
 
 if os.getenv("GEMINI_API_KEY"):
     os.environ["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
-
+ 
 
 def get_weather(
     location: str,

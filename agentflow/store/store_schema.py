@@ -1,11 +1,31 @@
+import secrets
+from collections.abc import Awaitable
+from contextlib import suppress
 from datetime import datetime
 from enum import Enum
 from typing import Any
-from uuid import uuid4
 
+from injectq import InjectQ
 from pydantic import BaseModel, Field, field_validator
 
 from agentflow.state import Message
+
+
+def _generate_memory_id() -> str:
+    """Generate a memory ID using InjectQ's registered factory (sync-safe).
+
+    Falls back to a ``secrets.token_hex`` value when no generator is registered
+    in the DI container (e.g. in unit tests that run without compiling a graph).
+    Async generators are not awaited here — the secrets fallback is used instead
+    to keep Pydantic default_factory synchronous.
+    """
+    with suppress(Exception):
+        generated_id = InjectQ.get_instance().try_get("generated_id", None)
+        if generated_id is not None and not isinstance(generated_id, Awaitable):
+            str_id = str(generated_id)
+            if str_id:
+                return str_id
+    return secrets.token_hex(16)
 
 
 class RetrievalStrategy(str, Enum):
@@ -42,7 +62,7 @@ class MemoryType(str, Enum):
 class MemorySearchResult(BaseModel):
     """Result from a memory search operation (Pydantic model)."""
 
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    id: str = Field(default_factory=_generate_memory_id)
     content: str = Field(default="", description="Primary textual content of the memory")
     score: float = Field(default=0.0, ge=0.0, description="Similarity / relevance score")
     memory_type: MemoryType = Field(default=MemoryType.EPISODIC)
@@ -65,7 +85,7 @@ class MemorySearchResult(BaseModel):
 class MemoryRecord(BaseModel):
     """Comprehensive memory record for storage (Pydantic model)."""
 
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    id: str = Field(default_factory=_generate_memory_id)
     content: str
     user_id: str | None = None
     thread_id: str | None = None

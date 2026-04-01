@@ -536,7 +536,7 @@ class CompiledGraph[StateT: AgentState]:
         stats: dict[str, Any] = {}
         start_time = asyncio.get_event_loop().time()
 
-        # 1. Shutdown background task manager first (most critical)
+        # 1. Shutdown background task manager (handles all pending async writes)
         try:
             logger.debug("Shutting down background task manager...")
             shutdown_stats = await self._task_manager.shutdown(timeout=self._shutdown_timeout)

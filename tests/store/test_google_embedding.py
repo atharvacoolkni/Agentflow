@@ -28,7 +28,7 @@ class TestGoogleEmbeddingInit:
             mock_genai.Client.return_value = MagicMock()
             with patch("agentflow.store.embedding.google_embedding.genai", mock_genai):
                 emb = GoogleEmbedding(api_key="test-api-key")
-                assert emb.model == "text-embedding-004"
+                assert emb.model == "gemini-embedding-001"
                 assert emb.api_key == "test-api-key"
                 assert emb._output_dimensionality is None
 
@@ -109,7 +109,7 @@ class TestGoogleEmbeddingDimension:
     def test_dimension_gemini_embedding_001(self):
         """Test dimension for gemini-embedding-001."""
         emb = self._make_embedding("gemini-embedding-001")
-        assert emb.dimension == 768
+        assert emb.dimension == 3072
 
     def test_dimension_embedding_001(self):
         """Test dimension for embedding-001."""
