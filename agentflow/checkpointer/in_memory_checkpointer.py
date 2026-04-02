@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -46,6 +47,7 @@ class InMemoryCheckpointer[StateT: AgentState](BaseCheckpointer[StateT]):
         # State storage
         self._states: dict[str, StateT] = {}
         self._state_cache: dict[str, StateT] = {}
+        self._generic_cache: dict[str, tuple[Any, float | None]] = {}
 
         # Message storage - organized by config key
         self._messages: dict[str, list[Message]] = defaultdict(list)
@@ -56,6 +58,7 @@ class InMemoryCheckpointer[StateT: AgentState](BaseCheckpointer[StateT]):
 
         # Async locks for concurrent access
         self._state_lock = asyncio.Lock()
+        self._cache_lock = asyncio.Lock()
         self._messages_lock = asyncio.Lock()
         self._threads_lock = asyncio.Lock()
 
@@ -176,6 +179,37 @@ class InMemoryCheckpointer[StateT: AgentState](BaseCheckpointer[StateT]):
             cache = self._state_cache.get(key)
             logger.debug(f"Retrieved state cache for key: {key}, found: {cache is not None}")
             return cache
+
+    async def aput_cache_value(
+        self,
+        namespace: str,
+        key: str,
+        value: Any,
+        ttl_seconds: int | None = None,
+    ) -> Any | None:
+        cache_key = f"{namespace}:{key}"
+        expires_at = time.time() + ttl_seconds if ttl_seconds else None
+        async with self._cache_lock:
+            self._generic_cache[cache_key] = (value, expires_at)
+        return value
+
+    async def aget_cache_value(self, namespace: str, key: str) -> Any | None:
+        cache_key = f"{namespace}:{key}"
+        async with self._cache_lock:
+            cached = self._generic_cache.get(cache_key)
+            if cached is None:
+                return None
+
+            value, expires_at = cached
+            if expires_at is not None and expires_at <= time.time():
+                self._generic_cache.pop(cache_key, None)
+                return None
+            return value
+
+    async def aclear_cache_value(self, namespace: str, key: str) -> Any | None:
+        cache_key = f"{namespace}:{key}"
+        async with self._cache_lock:
+            return self._generic_cache.pop(cache_key, None)
 
     # -------------------------
     # State methods Sync
@@ -685,9 +719,10 @@ class InMemoryCheckpointer[StateT: AgentState](BaseCheckpointer[StateT]):
             bool: True if released.
         """
         """Release resources asynchronously."""
-        async with self._state_lock, self._messages_lock, self._threads_lock:
+        async with self._state_lock, self._cache_lock, self._messages_lock, self._threads_lock:
             self._states.clear()
             self._state_cache.clear()
+            self._generic_cache.clear()
             self._messages.clear()
             self._message_metadata.clear()
             self._threads.clear()
@@ -704,6 +739,7 @@ class InMemoryCheckpointer[StateT: AgentState](BaseCheckpointer[StateT]):
         """Release resources synchronously."""
         self._states.clear()
         self._state_cache.clear()
+        self._generic_cache.clear()
         self._messages.clear()
         self._message_metadata.clear()
         self._threads.clear()

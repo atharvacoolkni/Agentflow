@@ -1,12 +1,13 @@
 [project]
 name = "10xscale-agentflow"
-version = "0.6.5"
+version = "0.6.7"
 description = "10xScale Agentflow is a Python framework for building, orchestrating, and managing multi-agent systems. Designed for flexibility and scalability, 10xScale Agentflow enables developers to create intelligent agents that collaborate, communicate, and solve complex tasks together."
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.12"
 dependencies = [
     "injectq>=0.4.0",
+    "pillow>=12.2.0",
     "pydantic",
     "python-dotenv",
 ]
@@ -46,6 +47,8 @@ openai = ["openai>=1.77.0"]
 pg_checkpoint = ["asyncpg>=0.29.0","redis>=4.2"]
 mcp = ["fastmcp>=2.11.3","mcp>=1.13.0"]
 composio = ["composio>=0.8.0"]
+images = ["Pillow>=10.0.0"]
+cloud-storage = ["cloud-storage-manager>=0.1.2"]
 langchain = ["langchain-core>=0.3.0","langchain-community>=0.3.0"]
 redis = ["redis>=4.2"]
 kafka = ["aiokafka>=0.8.0"]

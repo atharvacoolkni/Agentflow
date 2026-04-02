@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Sequence
 from datetime import datetime
 from typing import Any, Literal
 from uuid import uuid4
@@ -308,3 +308,239 @@ class Message(BaseModel):
             self.content.append(block)
         else:
             self.content = [block]
+
+    # --- Multimodal convenience constructors ---
+
+    @classmethod
+    def image_message(
+        cls,
+        *,
+        image_url: str | None = None,
+        image_base64: str | None = None,
+        mime_type: str = "image/png",
+        text: str | None = None,
+        role: Literal["user", "assistant", "system", "tool"] = "user",
+        message_id: str | None = None,
+    ) -> Message:
+        """Create a message containing an image and optional text.
+
+        Provide exactly one of *image_url* or *image_base64*.
+
+        Args:
+            image_url: URL of the image.
+            image_base64: Base64-encoded image data.
+            mime_type: MIME type of the image.
+            text: Optional text to include alongside the image.
+            role: Message role.
+            message_id: Optional message ID.
+
+        Returns:
+            Message with image content block(s).
+        """
+        if not image_url and not image_base64:
+            raise ValueError("Provide either image_url or image_base64")
+
+        blocks: list[ContentBlock] = []
+        if text:
+            blocks.append(TextBlock(text=text))
+
+        if image_url:
+            media = MediaRef(kind="url", url=image_url, mime_type=mime_type)
+        else:
+            media = MediaRef(kind="data", data_base64=image_base64, mime_type=mime_type)
+
+        blocks.append(ImageBlock(media=media))
+        return cls(
+            message_id=generate_id(message_id),
+            role=role,
+            content=blocks,
+        )
+
+    @classmethod
+    def multimodal_message(
+        cls,
+        content_blocks: Sequence[ContentBlock],
+        role: Literal["user", "assistant", "system", "tool"] = "user",
+        message_id: str | None = None,
+    ) -> Message:
+        """Create a message from an explicit list of content blocks.
+
+        Args:
+            content_blocks: Pre-built content blocks.
+            role: Message role.
+            message_id: Optional message ID.
+
+        Returns:
+            Message with the provided content blocks.
+        """
+        return cls(
+            message_id=generate_id(message_id),
+            role=role,
+            content=list(content_blocks),
+        )
+
+    @classmethod
+    def from_file(
+        cls,
+        file_path: str,
+        mime_type: str | None = None,
+        text: str | None = None,
+        role: Literal["user", "assistant", "system", "tool"] = "user",
+        message_id: str | None = None,
+    ) -> Message:
+        """Create a message from a local file (reads and base64-encodes it).
+
+        Auto-detects the block type (image vs document) from the MIME type.
+
+        Args:
+            file_path: Path to the file.
+            mime_type: MIME type (auto-detected from extension if None).
+            text: Optional text to include alongside the file.
+            role: Message role.
+            message_id: Optional message ID.
+
+        Returns:
+            Message with the appropriate content block.
+        """
+        import base64
+        import mimetypes
+        import pathlib
+
+        path = pathlib.Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if mime_type is None:
+            guessed, _ = mimetypes.guess_type(str(path))
+            mime_type = guessed or "application/octet-stream"
+
+        data = path.read_bytes()
+        b64 = base64.b64encode(data).decode()
+
+        blocks: list[ContentBlock] = []
+        if text:
+            blocks.append(TextBlock(text=text))
+
+        media = MediaRef(
+            kind="data",
+            data_base64=b64,
+            mime_type=mime_type,
+            filename=path.name,
+            size_bytes=len(data),
+        )
+
+        if mime_type.startswith("image/"):
+            blocks.append(ImageBlock(media=media))
+        elif mime_type.startswith("audio/"):
+            blocks.append(AudioBlock(media=media))
+        elif mime_type.startswith("video/"):
+            blocks.append(VideoBlock(media=media))
+        else:
+            blocks.append(DocumentBlock(media=media))
+
+        return cls(
+            message_id=generate_id(message_id),
+            role=role,
+            content=blocks,
+        )
+
+    # --- Store-backed convenience helpers ---
+
+    @classmethod
+    async def with_image(
+        cls,
+        data: bytes,
+        mime_type: str,
+        store: Any,
+        text: str | None = None,
+        role: Literal["user", "assistant", "system", "tool"] = "user",
+        message_id: str | None = None,
+    ) -> Message:
+        """Create a message with an image stored in a MediaStore.
+
+        The image bytes are persisted to the store and only a lightweight
+        ``MediaRef`` reference is kept in the message.
+
+        Args:
+            data: Raw image bytes.
+            mime_type: MIME type (e.g. ``"image/jpeg"``).
+            store: A ``BaseMediaStore`` instance.
+            text: Optional text alongside the image.
+            role: Message role.
+            message_id: Optional message ID.
+        """
+        key = await store.store(data, mime_type)
+        ref = store.to_media_ref(key, mime_type, size_bytes=len(data))
+
+        blocks: list[ContentBlock] = []
+        if text:
+            blocks.append(TextBlock(text=text))
+        blocks.append(ImageBlock(media=ref))
+
+        return cls(
+            message_id=generate_id(message_id),
+            role=role,
+            content=blocks,
+        )
+
+    @classmethod
+    async def with_file(
+        cls,
+        file_path: str,
+        store: Any,
+        mime_type: str | None = None,
+        text: str | None = None,
+        role: Literal["user", "assistant", "system", "tool"] = "user",
+        message_id: str | None = None,
+    ) -> Message:
+        """Create a message from a local file, stored via a MediaStore.
+
+        Reads the file, stores it in the media store, and creates the
+        appropriate content block type based on MIME type.
+
+        Args:
+            file_path: Path to the local file.
+            store: A ``BaseMediaStore`` instance.
+            mime_type: MIME type (auto-detected if ``None``).
+            text: Optional text alongside the file.
+            role: Message role.
+            message_id: Optional message ID.
+        """
+        import mimetypes as _mt
+        import pathlib
+
+        path = pathlib.Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if mime_type is None:
+            guessed, _ = _mt.guess_type(str(path))
+            mime_type = guessed or "application/octet-stream"
+
+        data = path.read_bytes()
+        key = await store.store(data, mime_type)
+        ref = store.to_media_ref(
+            key,
+            mime_type,
+            filename=path.name,
+            size_bytes=len(data),
+        )
+
+        blocks: list[ContentBlock] = []
+        if text:
+            blocks.append(TextBlock(text=text))
+
+        if mime_type.startswith("image/"):
+            blocks.append(ImageBlock(media=ref))
+        elif mime_type.startswith("audio/"):
+            blocks.append(AudioBlock(media=ref))
+        elif mime_type.startswith("video/"):
+            blocks.append(VideoBlock(media=ref))
+        else:
+            blocks.append(DocumentBlock(media=ref))
+
+        return cls(
+            message_id=generate_id(message_id),
+            role=role,
+            content=blocks,
+        )

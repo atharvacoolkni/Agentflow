@@ -11,6 +11,73 @@ from .constants import CALL_EXCLUDED_KWARGS
 logger = logging.getLogger("agentflow.agent")
 
 
+def _to_responses_content(content: Any) -> Any:
+    """Convert Chat Completions content format to Responses API format.
+
+    The Responses API uses different content part types:
+    - ``text``        → ``input_text``
+    - ``image_url``   → ``input_image``  (flattened URL)
+    - ``input_audio`` stays the same
+    - ``document``    → ``input_file``  or ``input_text`` (excerpt)
+
+    If *content* is a plain string, it is returned unchanged.
+    """
+    if not isinstance(content, list):
+        return content
+
+    converted: list[dict[str, Any]] = []
+    for part in content:
+        ptype = part.get("type", "")
+
+        if ptype == "text":
+            converted.append({"type": "input_text", "text": part.get("text", "")})
+
+        elif ptype == "image_url":
+            image_info = part.get("image_url", {})
+            url = image_info.get("url", "") if isinstance(image_info, dict) else str(image_info)
+            converted.append({"type": "input_image", "image_url": url})
+
+        elif ptype == "input_audio":
+            audio_info = part.get("input_audio", {})
+            converted.append(
+                {
+                    "type": "input_audio",
+                    "data": audio_info.get("data", ""),
+                    "format": audio_info.get("format", "wav"),
+                }
+            )
+
+        elif ptype == "document":
+            # Documents with extracted text → input_text; raw docs → input_file
+            doc_info = part.get("document", {})
+            if isinstance(doc_info, dict) and doc_info.get("text"):
+                converted.append({"type": "input_text", "text": doc_info["text"]})
+            elif isinstance(doc_info, dict) and doc_info.get("url"):
+                converted.append(
+                    {
+                        "type": "input_file",
+                        "file_url": doc_info["url"],
+                    }
+                )
+            else:
+                # Fallback: stringify whatever we have
+                converted.append({"type": "input_text", "text": str(doc_info)})
+
+        elif ptype == "video":
+            # Responses API doesn't natively support video input;
+            # pass as input_text reference or input_image for frame URLs
+            video_info = part.get("video", {})
+            url = video_info.get("url", "") if isinstance(video_info, dict) else str(video_info)
+            if url:
+                converted.append({"type": "input_text", "text": f"[Video: {url}]"})
+
+        else:
+            # Pass unknown parts through unchanged
+            converted.append(part)
+
+    return converted
+
+
 class AgentOpenAIMixin:
     """OpenAI and OpenAI-compatible API request helpers."""
 
@@ -92,7 +159,12 @@ class AgentOpenAIMixin:
             elif role == "assistant" and message.get("tool_calls"):
                 text_content = message.get("content", "")
                 if text_content:
-                    input_items.append({"role": "assistant", "content": text_content})
+                    input_items.append(
+                        {
+                            "role": "assistant",
+                            "content": _to_responses_content(text_content),
+                        }
+                    )
 
                 for tool_call in message["tool_calls"]:
                     function = tool_call.get("function", {})
@@ -105,7 +177,12 @@ class AgentOpenAIMixin:
                         }
                     )
             else:
-                input_items.append({"role": role, "content": message.get("content", "")})
+                input_items.append(
+                    {
+                        "role": role,
+                        "content": _to_responses_content(message.get("content", "")),
+                    }
+                )
 
         instructions = "\n".join(instructions_parts) if instructions_parts else None
 

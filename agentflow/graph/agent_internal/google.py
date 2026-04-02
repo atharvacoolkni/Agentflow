@@ -129,13 +129,123 @@ class AgentGoogleMixin:
         )
 
     def _handle_regular_message(self, content: Any, role: str) -> Any:
-        """Handle regular text messages (assistant or user)."""
+        """Handle regular text or multimodal messages (assistant or user).
+
+        When *content* is a list of OpenAI-style content parts (produced by
+        ``_build_content`` in the converter), each part is translated to a
+        ``google.genai.types.Part``.  Plain strings are handled as before.
+        """
         from google.genai import types
+
+        if isinstance(content, list):
+            parts = self._content_parts_to_google(content)
+            if not parts:
+                parts = [types.Part(text="")]
+            return types.Content(role=role, parts=parts)
 
         return types.Content(
             role=role,
             parts=[types.Part(text=str(content) if content else "")],
         )
+
+    def _content_parts_to_google(self, parts: list[dict[str, Any]]) -> list[Any]:
+        """Convert a list of OpenAI-style content parts to Google types.Part objects."""
+        from google.genai import types
+
+        google_parts: list[types.Part] = []
+        converters = {
+            "text": self._text_part_to_google,
+            "image_url": self._image_part_to_google,
+            "input_audio": self._audio_part_to_google,
+            "document": self._document_part_to_google,
+            "video": self._video_part_to_google,
+        }
+        for part in parts:
+            converter = converters.get(part.get("type", ""))
+            if converter:
+                google_parts.extend(converter(part, types))
+
+        return google_parts
+
+    def _text_part_to_google(self, part: dict[str, Any], types: Any) -> list[Any]:
+        text = part.get("text", "")
+        if not text:
+            return []
+        return [types.Part(text=text)]
+
+    def _image_part_to_google(self, part: dict[str, Any], types: Any) -> list[Any]:
+        image_info = part.get("image_url", {})
+        if not isinstance(image_info, dict):
+            return []
+
+        url = image_info.get("url", "")
+        if not isinstance(url, str) or not url:
+            return []
+
+        if url.startswith("data:"):
+            header, _, b64_data = url.partition(",")
+            mime = header.split(":")[1].split(";")[0] if ":" in header else "image/png"
+            raw = base64.b64decode(b64_data)
+            return [types.Part.from_bytes(data=raw, mime_type=mime)]
+
+        return [types.Part.from_uri(file_uri=url, mime_type="image/jpeg")]
+
+    def _audio_part_to_google(self, part: dict[str, Any], types: Any) -> list[Any]:
+        audio_info = part.get("input_audio", {})
+        if not isinstance(audio_info, dict):
+            return []
+
+        b64_data = audio_info.get("data", "")
+        fmt = audio_info.get("format", "wav")
+        if not b64_data:
+            return []
+
+        raw = base64.b64decode(b64_data)
+        return [types.Part.from_bytes(data=raw, mime_type=f"audio/{fmt}")]
+
+    def _document_part_to_google(self, part: dict[str, Any], types: Any) -> list[Any]:
+        doc_info = part.get("document", {})
+        if not isinstance(doc_info, dict):
+            return []
+
+        if doc_info.get("text"):
+            return [types.Part(text=doc_info["text"])]
+
+        return self._binary_or_uri_parts_to_google(
+            doc_info,
+            types,
+            default_mime="application/pdf",
+        )
+
+    def _video_part_to_google(self, part: dict[str, Any], types: Any) -> list[Any]:
+        video_info = part.get("video", {})
+        if not isinstance(video_info, dict):
+            return []
+
+        return self._binary_or_uri_parts_to_google(
+            video_info,
+            types,
+            default_mime="video/mp4",
+        )
+
+    def _binary_or_uri_parts_to_google(
+        self,
+        media_info: dict[str, Any],
+        types: Any,
+        *,
+        default_mime: str,
+    ) -> list[Any]:
+        mime = media_info.get("mime_type", default_mime)
+        data = media_info.get("data")
+        if data:
+            raw = base64.b64decode(data)
+            return [types.Part.from_bytes(data=raw, mime_type=mime)]
+
+        url = media_info.get("url")
+        if url:
+            return [types.Part.from_uri(file_uri=url, mime_type=mime)]
+
+        return []
 
     def _convert_tools_to_google_format(self, tools: list) -> list:
         """Convert OpenAI-style tool definitions into Google FunctionDeclarations."""
