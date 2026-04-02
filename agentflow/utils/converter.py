@@ -1,11 +1,5 @@
-"""
-Message conversion utilities for TAF agent graphs.
-
-This module provides helpers to convert Message objects and agent state
-into dicts suitable for LLM and tool invocation payloads.
-"""
-
 import base64
+import json
 import logging
 from typing import TYPE_CHECKING, Any, Union
 
@@ -30,7 +24,7 @@ logger = logging.getLogger("agentflow.utils")
 
 _AGENTFLOW_SCHEME = "agentflow://media/"
 
-_MEDIA_BLOCK_TYPES = (ImageBlock, AudioBlock, VideoBlock, DocumentBlock)
+_MEDIA_BLOCK_TYPES = ImageBlock | AudioBlock | VideoBlock | DocumentBlock
 _MEDIA_DICT_TYPES = {"image", "audio", "video", "document"}
 
 
@@ -84,11 +78,9 @@ async def resolve_media_refs(
     This should be called *before* ``convert_messages()`` when a MediaStore
     is configured.  If no MediaStore is in use, skip this step.
     """
-    media_block_types = (ImageBlock, AudioBlock, VideoBlock, DocumentBlock)
-
     for msg in messages:
         for block in msg.content:
-            if not isinstance(block, media_block_types):
+            if not isinstance(block, _MEDIA_BLOCK_TYPES):
                 continue
             media = block.media  # type: ignore[union-attr]
             if not (media.kind == "url" and media.url and media.url.startswith(_AGENTFLOW_SCHEME)):
@@ -143,9 +135,9 @@ def _has_remote_tool_call_block(blocks: list[Any]) -> bool:
 def _has_multimodal_blocks(blocks: list[Any]) -> bool:
     """Return True when the block list contains any non-text media block."""
     for block in blocks:
-        if isinstance(block, (ImageBlock, AudioBlock, DocumentBlock, VideoBlock)):
+        if isinstance(block, _MEDIA_BLOCK_TYPES):
             return True
-        if isinstance(block, dict) and block.get("type") in ("image", "audio", "document", "video"):
+        if isinstance(block, dict) and block.get("type") in _MEDIA_DICT_TYPES:
             return True
     return False
 
@@ -243,13 +235,62 @@ def _video_block_to_openai(block: VideoBlock) -> dict[str, Any]:
             "type": "video",
             "video": {"data": media.data_base64, "mime_type": mime, "url": None},
         }
-    elif media.kind == "url" and media.url:
+    if media.kind == "url" and media.url:
         mime = media.mime_type or "video/mp4"
         return {
             "type": "video",
             "video": {"url": media.url, "mime_type": mime, "data": None},
         }
     return {"type": "text", "text": f"[Video: {media.url or media.file_id or 'unknown'}]"}
+
+
+def _build_text_content(blocks: list[Any]) -> str:
+    parts: list[str] = []
+    for block in blocks:
+        if isinstance(block, TextBlock):
+            parts.append(block.text or "")
+            continue
+
+        if isinstance(block, ToolResultBlock):
+            parts.append(
+                block.output
+                if isinstance(block.output, str)
+                else json.dumps(block.output, default=str)
+            )
+            continue
+
+        if isinstance(block, dict) and block.get("type") == "text":
+            parts.append(str(block.get("text") or ""))
+
+    return "".join(parts)
+
+
+def _append_content_part(content_parts: list[dict[str, Any]], block: Any) -> None:
+    if isinstance(block, TextBlock):
+        if block.text:
+            content_parts.append({"type": "text", "text": block.text})
+        return
+
+    if isinstance(block, ImageBlock):
+        content_parts.append(_image_block_to_openai(block))
+        return
+
+    if isinstance(block, AudioBlock):
+        content_parts.append(_audio_block_to_openai(block))
+        return
+
+    if isinstance(block, DocumentBlock):
+        content_parts.extend(_document_block_to_openai(block))
+        return
+
+    if isinstance(block, VideoBlock):
+        content_parts.append(_video_block_to_openai(block))
+        return
+
+    if isinstance(block, dict) and block.get("type") == "text":
+        text = str(block.get("text") or "")
+        if text:
+            content_parts.append({"type": "text", "text": text})
 
 
 def _build_content(blocks: list[Any]) -> str | list[dict[str, Any]]:
@@ -259,46 +300,12 @@ def _build_content(blocks: list[Any]) -> str | list[dict[str, Any]]:
     If multimodal blocks are present, returns a list of content parts.
     """
     if not _has_multimodal_blocks(blocks):
-        # Text-only: join text blocks into a string (backward compatible)
-        parts: list[str] = []
-        for block in blocks:
-            if isinstance(block, TextBlock):
-                parts.append(block.text or "")
-            elif isinstance(block, ToolResultBlock):
-                import json as _json
-
-                parts.append(
-                    block.output
-                    if isinstance(block.output, str)
-                    else _json.dumps(block.output, default=str)
-                )
-            elif isinstance(block, dict) and block.get("type") == "text":
-                parts.append(str(block.get("text") or ""))
-        return "".join(parts)
+        return _build_text_content(blocks)
 
     # Multimodal: build list of content parts
     content_parts: list[dict[str, Any]] = []
     for block in blocks:
-        if isinstance(block, TextBlock):
-            if block.text:
-                content_parts.append({"type": "text", "text": block.text})
-        elif isinstance(block, ImageBlock):
-            content_parts.append(_image_block_to_openai(block))
-        elif isinstance(block, AudioBlock):
-            content_parts.append(_audio_block_to_openai(block))
-        elif isinstance(block, DocumentBlock):
-            content_parts.extend(_document_block_to_openai(block))
-        elif isinstance(block, VideoBlock):
-            content_parts.append(_video_block_to_openai(block))
-        elif isinstance(block, dict):
-            # Pass-through dict blocks
-            block_type = block.get("type", "")
-            if block_type == "text":
-                text = str(block.get("text") or "")
-                if text:
-                    content_parts.append({"type": "text", "text": text})
-        # Other block types (ToolCallBlock, ReasoningBlock, etc.) are skipped
-        # in the content array — they are handled elsewhere in the pipeline.
+        _append_content_part(content_parts, block)
 
     return content_parts
 

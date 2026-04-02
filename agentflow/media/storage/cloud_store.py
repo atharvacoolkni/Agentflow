@@ -37,6 +37,7 @@ import mimetypes
 import tempfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from .base import BaseMediaStore
@@ -51,6 +52,7 @@ _FALLBACK_EXT: dict[str, str] = {
     "audio/mp3": ".mp3",
     "image/webp": ".webp",
 }
+_ALLOWED_DOWNLOAD_SCHEMES = {"http", "https"}
 
 
 def _mime_to_ext(mime_type: str) -> str:
@@ -257,6 +259,7 @@ class CloudMediaStore(BaseMediaStore):
 
         Prefers ``httpx`` (async), falls back to ``urllib`` (sync).
         """
+        _validate_download_url(url)
         try:
             import httpx
 
@@ -268,5 +271,12 @@ class CloudMediaStore(BaseMediaStore):
             # Fallback to stdlib (blocking, but functional)
             import urllib.request
 
-            with urllib.request.urlopen(url) as resp:  # noqa: S310
+            with urllib.request.urlopen(url) as resp:  # noqa: S310  # nosec B310
                 return resp.read()
+
+
+def _validate_download_url(url: str) -> None:
+    """Allow downloads only from explicit HTTP(S) signed URLs."""
+    parsed = urlparse(url)
+    if parsed.scheme not in _ALLOWED_DOWNLOAD_SCHEMES or not parsed.netloc:
+        raise ValueError(f"Unsupported download URL scheme: {parsed.scheme or 'missing'}")

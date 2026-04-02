@@ -174,7 +174,7 @@ class MediaRefResolver:
 
         url = payload.get("url")
         expires_at = payload.get("expires_at")
-        if not isinstance(url, str) or not isinstance(expires_at, (int, float)):
+        if not isinstance(url, str) or not isinstance(expires_at, int | float):
             return None
 
         if expires_at <= time.time() + self.direct_url_refresh_buffer_seconds:

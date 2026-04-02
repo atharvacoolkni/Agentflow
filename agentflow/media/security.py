@@ -8,9 +8,9 @@ Provides:
 
 from __future__ import annotations
 
-import os
 import re
 import unicodedata
+from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -30,6 +30,7 @@ _MAGIC_SIGNATURES: dict[str, list[bytes]] = {
 
 # MIME types that need WEBP sub-check (RIFF container)
 _RIFF_SUBTYPES = {"image/webp"}
+_RIFF_HEADER_LEN = 12
 
 
 def validate_magic_bytes(data: bytes, claimed_mime: str) -> bool:
@@ -52,15 +53,13 @@ def validate_magic_bytes(data: bytes, claimed_mime: str) -> bool:
         # Unknown MIME — we can't validate, so pass through
         return True
 
-    header = data[:12]
+    header = data[:_RIFF_HEADER_LEN]
     for sig in signatures:
         if header[: len(sig)] == sig:
             # Extra check for RIFF-based formats (WEBP)
             if claimed_mime in _RIFF_SUBTYPES:
                 # RIFF....WEBP  — bytes 8-12 should be "WEBP"
-                if len(data) >= 12 and data[8:12] == b"WEBP":
-                    return True
-                return False
+                return bool(len(data) >= _RIFF_HEADER_LEN and data[8:12] == b"WEBP")
             return True
 
     return False
@@ -97,7 +96,7 @@ def sanitize_filename(filename: str) -> str:
     filename = unicodedata.normalize("NFC", filename)
 
     # Take only the basename (strip any directory components)
-    filename = os.path.basename(filename)
+    filename = Path(filename).name
 
     # Remove path traversal patterns that may survive basename on some OSes
     filename = filename.replace("..", "")
@@ -113,7 +112,9 @@ def sanitize_filename(filename: str) -> str:
 
     # Truncate preserving extension
     if len(filename) > _MAX_FILENAME_LEN:
-        name, ext = os.path.splitext(filename)
+        path = Path(filename)
+        ext = "".join(path.suffixes)
+        name = filename.removesuffix(ext) if ext else path.name
         max_name = _MAX_FILENAME_LEN - len(ext)
         filename = name[:max_name] + ext
 

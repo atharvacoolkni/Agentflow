@@ -130,35 +130,22 @@ class MediaProcessor:
         Returns the original block if Pillow is unavailable, the image
         is not inline data, or there is no EXIF orientation to fix.
         """
-        if block.media.kind != "data" or not block.media.data_base64:
-            return block
-
-        # Only JPEGs typically have EXIF orientation
-        mime = (block.media.mime_type or "").lower()
-        if mime not in ("image/jpeg", "image/jpg", "image/tiff"):
+        if not self._needs_orientation_fix(block):
             return block
 
         try:
-            from PIL import Image, ImageOps
+            from PIL import ImageOps
         except ImportError:
             return block
 
-        raw = base64.b64decode(block.media.data_base64)
-        try:
-            img = Image.open(io.BytesIO(raw))
-        except Exception:
+        img = self._load_inline_image(block)
+        if img is None:
             return block
 
-        # Check if EXIF orientation tag exists and isn't normal (1)
-        exif = img.getexif()
-        orientation = exif.get(0x0112)  # 0x0112 = Orientation tag
-        if orientation is None or orientation == 1:
-            return block  # No rotation needed
+        if not self._has_exif_rotation(img):
+            return block
 
         corrected = ImageOps.exif_transpose(img)
-        if corrected is None:
-            return block
-
         buf = io.BytesIO()
         fmt = _pil_format(block.media.mime_type)
         corrected.save(buf, format=fmt)
@@ -173,6 +160,31 @@ class MediaProcessor:
             }
         )
         return ImageBlock(media=new_media, alt_text=block.alt_text, bbox=block.bbox)
+
+    def _needs_orientation_fix(self, block: ImageBlock) -> bool:
+        media = block.media
+        if media.kind != "data" or not media.data_base64:
+            return False
+        mime = (media.mime_type or "").lower()
+        return mime in {"image/jpeg", "image/jpg", "image/tiff"}
+
+    def _load_inline_image(self, block: ImageBlock) -> Any | None:
+        try:
+            from PIL import Image
+        except ImportError:
+            return None
+
+        raw = base64.b64decode(block.media.data_base64)
+        try:
+            return Image.open(io.BytesIO(raw))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _has_exif_rotation(img: Any) -> bool:
+        exif = img.getexif()
+        orientation = exif.get(0x0112)  # 0x0112 = Orientation tag
+        return orientation not in (None, 1)
 
     def generate_thumbnail(self, block: ImageBlock, max_dim: int = 256) -> ImageBlock:
         """Create a small thumbnail version of an inline image.

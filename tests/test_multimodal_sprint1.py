@@ -76,7 +76,7 @@ class TestMultimodalConfig:
         assert ImageHandling.URL == "url"
         assert ImageHandling.FILE_ID == "file_id"
         assert DocumentHandling.EXTRACT_TEXT == "extract_text"
-        assert DocumentHandling.PASS_RAW == "pass_raw"
+        assert DocumentHandling.FORWARD_RAW == "pass_raw"
         assert DocumentHandling.SKIP == "skip"
 
     def test_serialization_roundtrip(self):

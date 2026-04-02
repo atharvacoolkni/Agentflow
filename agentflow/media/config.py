@@ -17,7 +17,7 @@ class DocumentHandling(str, Enum):
     """Strategy for handling document content."""
 
     EXTRACT_TEXT = "extract_text"
-    PASS_RAW = "pass_raw"
+    FORWARD_RAW = "pass_raw"
     SKIP = "skip"
 
 
