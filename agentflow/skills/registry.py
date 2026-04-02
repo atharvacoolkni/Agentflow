@@ -155,9 +155,10 @@ class SkillsRegistry:
             "## Available Skills\n",
             "### How to Use Skills\n",
             "When the user's request matches a skill:\n",
-            "1. Call `set_skill(skill_name)` to load main instructions",
-            "2. If a resource matches the topic, ALSO call `set_skill(skill_name, resource)` in SAME turn",
-            "3. Then provide your answer using the loaded content\n",
+            "1. Call `set_skill(skill_name)` to load the skill instructions\n",
+            "2. Read the loaded content — it may reference additional resources\n",
+            "3. If you need a specific resource mentioned in the skill, call `set_skill(skill_name, resource_name)`\n",
+            "4. Then provide your answer using the loaded content\n",
             "### Skills & Resources\n",
         ]
 
@@ -167,12 +168,6 @@ class SkillsRegistry:
             if len(meta.triggers) > 4:
                 triggers_str += f" (+{len(meta.triggers) - 4} more)"
             lines.append(f"**`{meta.name}`** — triggers: {triggers_str}")
-
-            # Resources with hints
-            if meta.resources:
-                lines.append("  Resources:")
-                for res in meta.resources:
-                    lines.append(f"    - `{res}`")
             lines.append("")
 
         return "\n".join(lines)
