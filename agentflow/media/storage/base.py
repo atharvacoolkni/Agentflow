@@ -41,6 +41,37 @@ class BaseMediaStore(ABC):
     async def exists(self, storage_key: str) -> bool:
         """Check whether a storage key exists."""
 
+    async def get_metadata(self, storage_key: str) -> dict[str, Any] | None:
+        """Return lightweight metadata without reading the full blob when possible.
+
+        The default implementation falls back to ``retrieve()``, which is correct
+        but not optimal for remote stores. Production backends should override
+        this to avoid downloading object bytes for metadata-only access.
+        """
+        try:
+            data, mime_type = await self.retrieve(storage_key)
+        except KeyError:
+            return None
+
+        return {
+            "mime_type": mime_type,
+            "size_bytes": len(data),
+        }
+
+    async def get_direct_url(
+        self,
+        storage_key: str,
+        mime_type: str | None = None,
+        expiration: int = 3600,
+    ) -> str | None:
+        """Return a provider-consumable URL when the store supports it.
+
+        Stores backed by cloud object storage can override this to return
+        a short-lived signed URL so downstream model providers can fetch the
+        media directly instead of routing bytes back through the app server.
+        """
+        return None
+
     def to_media_ref(
         self,
         storage_key: str,

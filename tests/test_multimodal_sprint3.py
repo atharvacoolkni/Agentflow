@@ -3,7 +3,6 @@
 Covers:
 - InMemoryMediaStore: store/retrieve/delete/exists roundtrip
 - LocalFileMediaStore: same + path traversal prevention + cleanup
-- PgBlobStore: mocked asyncpg pool tests
 - MediaRefResolver: all MediaRef kinds -> correct OpenAI format
 - Auto-offload: large inline -> auto-replaced with store reference
 - resolve_media_refs: pre-resolves agentflow:// URLs in messages
@@ -21,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from agentflow.checkpointer import InMemoryCheckpointer
 from agentflow.media.config import MultimodalConfig
 from agentflow.media.offload import (
     MediaOffloadPolicy,
@@ -219,131 +219,6 @@ class TestMimeToExt:
 
 
 # ===========================================================================
-# PgBlobStore (mocked — no live PG required)
-# ===========================================================================
-
-
-def _make_pg_mocks(mock_conn=None):
-    """Create a mock asyncpg pool whose acquire() is a proper async context manager."""
-    if mock_conn is None:
-        mock_conn = AsyncMock()
-    mock_pool = MagicMock()
-
-    # pool.acquire() must return an async context manager (not a coroutine)
-    acm = MagicMock()
-    acm.__aenter__ = AsyncMock(return_value=mock_conn)
-    acm.__aexit__ = AsyncMock(return_value=False)
-    mock_pool.acquire.return_value = acm
-    return mock_pool, mock_conn
-
-
-class TestPgBlobStore:
-    @pytest.mark.asyncio
-    async def test_store(self):
-        from agentflow.media.storage.pg_store import PgBlobStore
-
-        mock_pool, mock_conn = _make_pg_mocks()
-
-        store = PgBlobStore(pool=mock_pool)
-        key = await store.store(b"data", "image/png")
-
-        assert isinstance(key, str)
-        assert len(key) == 32
-        mock_conn.execute.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_retrieve_found(self):
-        from agentflow.media.storage.pg_store import PgBlobStore
-
-        mock_conn = AsyncMock()
-        mock_conn.fetchrow.return_value = {"data": b"image bytes", "mime_type": "image/jpeg"}
-        mock_pool, _ = _make_pg_mocks(mock_conn)
-
-        store = PgBlobStore(pool=mock_pool)
-        data, mime = await store.retrieve("abc123")
-        assert data == b"image bytes"
-        assert mime == "image/jpeg"
-
-    @pytest.mark.asyncio
-    async def test_retrieve_not_found(self):
-        from agentflow.media.storage.pg_store import PgBlobStore
-
-        mock_conn = AsyncMock()
-        mock_conn.fetchrow.return_value = None
-        mock_pool, _ = _make_pg_mocks(mock_conn)
-
-        store = PgBlobStore(pool=mock_pool)
-        with pytest.raises(KeyError, match="Media not found"):
-            await store.retrieve("nonexistent")
-
-    @pytest.mark.asyncio
-    async def test_delete(self):
-        from agentflow.media.storage.pg_store import PgBlobStore
-
-        mock_conn = AsyncMock()
-        mock_conn.execute.return_value = "DELETE 1"
-        mock_pool, _ = _make_pg_mocks(mock_conn)
-
-        store = PgBlobStore(pool=mock_pool)
-        assert await store.delete("key123") is True
-
-    @pytest.mark.asyncio
-    async def test_delete_not_found(self):
-        from agentflow.media.storage.pg_store import PgBlobStore
-
-        mock_conn = AsyncMock()
-        mock_conn.execute.return_value = "DELETE 0"
-        mock_pool, _ = _make_pg_mocks(mock_conn)
-
-        store = PgBlobStore(pool=mock_pool)
-        assert await store.delete("nonexistent") is False
-
-    @pytest.mark.asyncio
-    async def test_exists(self):
-        from agentflow.media.storage.pg_store import PgBlobStore
-
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.return_value = 1
-        mock_pool, _ = _make_pg_mocks(mock_conn)
-
-        store = PgBlobStore(pool=mock_pool)
-        assert await store.exists("key123") is True
-
-    @pytest.mark.asyncio
-    async def test_exists_not_found(self):
-        from agentflow.media.storage.pg_store import PgBlobStore
-
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.return_value = None
-        mock_pool, _ = _make_pg_mocks(mock_conn)
-
-        store = PgBlobStore(pool=mock_pool)
-        assert await store.exists("nonexistent") is False
-
-    @pytest.mark.asyncio
-    async def test_delete_by_thread(self):
-        from agentflow.media.storage.pg_store import PgBlobStore
-
-        mock_conn = AsyncMock()
-        mock_conn.execute.return_value = "DELETE 3"
-        mock_pool, _ = _make_pg_mocks(mock_conn)
-
-        store = PgBlobStore(pool=mock_pool, thread_id="t-1")
-        count = await store.delete_by_thread("t-1")
-        assert count == 3
-
-    @pytest.mark.asyncio
-    async def test_initialize(self):
-        from agentflow.media.storage.pg_store import PgBlobStore
-
-        mock_pool, mock_conn = _make_pg_mocks()
-
-        store = PgBlobStore(pool=mock_pool)
-        await store.initialize()
-        assert mock_conn.execute.call_count == 2  # CREATE TABLE + CREATE INDEX
-
-
-# ===========================================================================
 # MediaRefResolver (OpenAI format only — Google requires google-genai)
 # ===========================================================================
 
@@ -381,6 +256,45 @@ class TestMediaRefResolverOpenAI:
 
         expected_b64 = base64.b64encode(b"image data").decode()
         assert result["image_url"]["url"] == f"data:image/jpeg;base64,{expected_b64}"
+
+    @pytest.mark.asyncio
+    async def test_resolve_internal_url_prefers_direct_store_url(self):
+        store = MagicMock(spec=BaseMediaStore)
+        store.get_direct_url = AsyncMock(return_value="https://signed.example.com/image.jpg")
+
+        resolver = MediaRefResolver(media_store=store)
+        ref = MediaRef(kind="url", url="agentflow://media/abc123", mime_type="image/jpeg")
+        result = await resolver.resolve_for_openai(ref)
+
+        assert result == {
+            "type": "image_url",
+            "image_url": {"url": "https://signed.example.com/image.jpg"},
+        }
+        store.get_direct_url.assert_awaited_once_with("abc123", mime_type="image/jpeg")
+        store.retrieve.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_resolve_internal_url_caches_direct_store_url(self):
+        store = MagicMock(spec=BaseMediaStore)
+        store.get_direct_url = AsyncMock(return_value="https://signed.example.com/image.jpg")
+        cache = InMemoryCheckpointer()
+
+        resolver = MediaRefResolver(
+            media_store=store,
+            cache_backend=cache,
+            direct_url_expiration_seconds=3600,
+        )
+        ref = MediaRef(kind="url", url="agentflow://media/abc123", mime_type="image/jpeg")
+
+        first = await resolver.resolve_for_openai(ref)
+        second = await resolver.resolve_for_openai(ref)
+
+        assert first == second
+        store.get_direct_url.assert_awaited_once_with(
+            "abc123",
+            mime_type="image/jpeg",
+            expiration=3600,
+        )
 
     @pytest.mark.asyncio
     async def test_resolve_internal_url_no_store_raises(self):

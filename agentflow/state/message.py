@@ -455,7 +455,7 @@ class Message(BaseModel):
         text: str | None = None,
         role: Literal["user", "assistant", "system", "tool"] = "user",
         message_id: str | None = None,
-    ) -> "Message":
+    ) -> Message:
         """Create a message with an image stored in a MediaStore.
 
         The image bytes are persisted to the store and only a lightweight
@@ -492,7 +492,7 @@ class Message(BaseModel):
         text: str | None = None,
         role: Literal["user", "assistant", "system", "tool"] = "user",
         message_id: str | None = None,
-    ) -> "Message":
+    ) -> Message:
         """Create a message from a local file, stored via a MediaStore.
 
         Reads the file, stores it in the media store, and creates the

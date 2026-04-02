@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from .base import BaseMediaStore
 
+
 logger = logging.getLogger("agentflow.media.storage.local")
 
 _VALID_KEY_RE = re.compile(r"^[a-f0-9]{32}$")
@@ -112,6 +113,13 @@ class LocalFileMediaStore(BaseMediaStore):
     async def exists(self, storage_key: str) -> bool:
         self._validate_key(storage_key)
         return self._meta_path(storage_key).exists()
+
+    async def get_metadata(self, storage_key: str) -> dict[str, Any] | None:
+        self._validate_key(storage_key)
+        meta_path = self._meta_path(storage_key)
+        if not meta_path.exists():
+            return None
+        return json.loads(meta_path.read_text(encoding="utf-8"))
 
     # ------------------------------------------------------------------
     # Internal helpers

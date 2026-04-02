@@ -128,11 +128,10 @@ async def upload_to_google_file_api(
 
 async def _google_upload(client: Any, data: bytes, mime_type: str, display_name: str | None) -> Any:
     """Perform the actual Google File API upload (sync or async)."""
-    import io
-
     # google-genai SDK uses synchronous upload by default
     # Wrap in a sync call
     import asyncio
+    import io
 
     def _sync_upload():
         return client.files.upload(

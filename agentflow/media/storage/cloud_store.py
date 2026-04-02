@@ -41,6 +41,7 @@ from uuid import uuid4
 
 from .base import BaseMediaStore
 
+
 logger = logging.getLogger("agentflow.media.storage.cloud")
 
 # Extension map for cases where mimetypes doesn't know the type
@@ -178,6 +179,9 @@ class CloudMediaStore(BaseMediaStore):
         meta = await self._download_meta(storage_key)
         return meta is not None
 
+    async def get_metadata(self, storage_key: str) -> dict[str, Any] | None:
+        return await self._download_meta(storage_key)
+
     # ------------------------------------------------------------------
     # Bonus: direct URL access
     # ------------------------------------------------------------------
@@ -206,6 +210,26 @@ class CloudMediaStore(BaseMediaStore):
         ext = meta.get("ext", _mime_to_ext(meta["mime_type"]))
         blob_path = self._cloud_path(storage_key, ext)
         return await self._storage.get_public_url(blob_path, expiration=expiration)
+
+    async def get_direct_url(
+        self,
+        storage_key: str,
+        mime_type: str | None = None,
+        expiration: int = 3600,
+    ) -> str | None:
+        """Return a signed blob URL without downloading the object bytes.
+
+        When ``mime_type`` is known from the existing ``MediaRef``, we can
+        derive the object path directly and skip the metadata sidecar lookup.
+        That keeps model resolution on a signed-URL path instead of a
+        download-then-reupload/base64 path.
+        """
+        if mime_type:
+            ext = _mime_to_ext(mime_type)
+            blob_path = self._cloud_path(storage_key, ext)
+            return await self._storage.get_public_url(blob_path, expiration=expiration)
+
+        return await self.get_public_url(storage_key, expiration=expiration)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -37,6 +37,18 @@ class InMemoryMediaStore(BaseMediaStore):
     async def exists(self, storage_key: str) -> bool:
         return storage_key in self._data
 
+    async def get_metadata(self, storage_key: str) -> dict[str, Any] | None:
+        try:
+            data, mime_type, metadata = self._data[storage_key]
+        except KeyError:
+            return None
+
+        return {
+            "mime_type": mime_type,
+            "size_bytes": len(data),
+            **metadata,
+        }
+
     # -- Helpers for testing --------------------------------------------------
 
     def __len__(self) -> int:

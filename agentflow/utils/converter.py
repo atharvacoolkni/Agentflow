@@ -93,6 +93,16 @@ async def resolve_media_refs(
             media = block.media  # type: ignore[union-attr]
             if not (media.kind == "url" and media.url and media.url.startswith(_AGENTFLOW_SCHEME)):
                 continue
+            direct_url = await resolver._get_direct_url(media)  # type: ignore[attr-defined]
+            if direct_url:
+                block.media = media.model_copy(  # type: ignore[union-attr]
+                    update={
+                        "kind": "url",
+                        "url": direct_url,
+                    }
+                )
+                continue
+
             # Resolve internal URL -> inline base64
             key = media.url.removeprefix(_AGENTFLOW_SCHEME)
             data, mime = await resolver.media_store.retrieve(key)  # type: ignore[union-attr]

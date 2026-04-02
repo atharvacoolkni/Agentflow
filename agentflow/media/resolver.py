@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import base64
 import logging
+import time
 from typing import Any
 
 from agentflow.state.message_block import MediaRef
 
 from .storage.base import BaseMediaStore
+
 
 logger = logging.getLogger("agentflow.media.resolver")
 
@@ -29,8 +31,29 @@ class MediaRefResolver:
             internal references will raise.
     """
 
-    def __init__(self, media_store: BaseMediaStore | None = None) -> None:
+    def __init__(
+        self,
+        media_store: BaseMediaStore | None = None,
+        cache_backend: Any | None = None,
+        direct_url_expiration_seconds: int = 3600,
+        direct_url_refresh_buffer_seconds: int = 60,
+    ) -> None:
         self.media_store = media_store
+        self.cache_backend = cache_backend
+        self.direct_url_expiration_seconds = direct_url_expiration_seconds
+        self.direct_url_refresh_buffer_seconds = direct_url_refresh_buffer_seconds
+
+    def with_cache(
+        self,
+        cache_backend: Any,
+        expiration_seconds: int = 3600,
+        refresh_buffer_seconds: int = 60,
+    ) -> MediaRefResolver:
+        """Attach a shared cache backend for signed URLs."""
+        self.cache_backend = cache_backend
+        self.direct_url_expiration_seconds = expiration_seconds
+        self.direct_url_refresh_buffer_seconds = refresh_buffer_seconds
+        return self
 
     # ------------------------------------------------------------------
     # OpenAI
@@ -43,6 +66,10 @@ class MediaRefResolver:
             A dict like ``{"type": "image_url", "image_url": {"url": ...}}``.
         """
         if ref.kind == "url" and ref.url and ref.url.startswith(_AGENTFLOW_SCHEME):
+            direct_url = await self._get_direct_url(ref)
+            if direct_url:
+                return _openai_image_url(direct_url)
+
             data, mime = await self._retrieve(ref.url)
             b64 = base64.b64encode(data).decode()
             return _openai_image_url(f"data:{mime};base64,{b64}")
@@ -72,6 +99,11 @@ class MediaRefResolver:
         from google.genai import types
 
         if ref.kind == "url" and ref.url and ref.url.startswith(_AGENTFLOW_SCHEME):
+            direct_url = await self._get_direct_url(ref)
+            if direct_url:
+                mime = ref.mime_type or "application/octet-stream"
+                return types.Part.from_uri(file_uri=direct_url, mime_type=mime)
+
             data, mime = await self._retrieve(ref.url)
             return types.Part.from_bytes(data=data, mime_type=mime)
 
@@ -108,6 +140,61 @@ class MediaRefResolver:
             )
         key = agentflow_url.removeprefix(_AGENTFLOW_SCHEME)
         return await self.media_store.retrieve(key)
+
+    async def _get_direct_url(self, ref: MediaRef) -> str | None:
+        """Return a direct URL for internal media when the store supports it."""
+        if self.media_store is None or not ref.url:
+            return None
+
+        key = ref.url.removeprefix(_AGENTFLOW_SCHEME)
+        mime_type = ref.mime_type or "application/octet-stream"
+        cache_key = f"{key}:{mime_type}:{self.direct_url_expiration_seconds}"
+        cached_url = await self._get_cached_signed_url(cache_key)
+        if cached_url:
+            return cached_url
+
+        direct_url_kwargs: dict[str, Any] = {"mime_type": ref.mime_type}
+        # Only force the expiration when the resolver is coordinating a shared
+        # signed-URL cache. Otherwise the store's own default lifetime is fine.
+        if self.cache_backend is not None:
+            direct_url_kwargs["expiration"] = self.direct_url_expiration_seconds
+
+        direct_url = await self.media_store.get_direct_url(key, **direct_url_kwargs)
+        if direct_url:
+            await self._cache_signed_url(cache_key, direct_url)
+        return direct_url
+
+    async def _get_cached_signed_url(self, cache_key: str) -> str | None:
+        if self.cache_backend is None:
+            return None
+
+        payload = await self.cache_backend.aget_cache_value("media:signed-url", cache_key)
+        if not isinstance(payload, dict):
+            return None
+
+        url = payload.get("url")
+        expires_at = payload.get("expires_at")
+        if not isinstance(url, str) or not isinstance(expires_at, (int, float)):
+            return None
+
+        if expires_at <= time.time() + self.direct_url_refresh_buffer_seconds:
+            return None
+        return url
+
+    async def _cache_signed_url(self, cache_key: str, url: str) -> None:
+        if self.cache_backend is None:
+            return
+
+        expires_at = int(time.time() + self.direct_url_expiration_seconds)
+        await self.cache_backend.aput_cache_value(
+            "media:signed-url",
+            cache_key,
+            {
+                "url": url,
+                "expires_at": expires_at,
+            },
+            ttl_seconds=self.direct_url_expiration_seconds,
+        )
 
 
 def _openai_image_url(url: str) -> dict[str, Any]:

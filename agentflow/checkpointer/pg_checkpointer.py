@@ -526,6 +526,10 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         """
         return f"state_cache:{thread_id}:{user_id}"
 
+    def _get_generic_cache_key(self, namespace: str, key: str) -> str:
+        """Build a Redis key for shared non-state cache entries."""
+        return f"generic_cache:{namespace}:{key}"
+
     def _serialize_state(self, state: StateT) -> str:
         """
         Serialize state to JSON string for storage.
@@ -949,6 +953,51 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
             logger.error("Failed to get cached state for thread_id=%s: %s", thread_id, e)
             # Fallback to PostgreSQL on error
             return await self.aget_state(config)
+
+    async def aput_cache_value(
+        self,
+        namespace: str,
+        key: str,
+        value: Any,
+        ttl_seconds: int | None = None,
+    ) -> Any | None:
+        """Cache a generic JSON-serializable value in Redis."""
+        try:
+            cache_key = self._get_generic_cache_key(namespace, key)
+            ttl = ttl_seconds or self.cache_ttl
+            await self.redis.setex(cache_key, ttl, json.dumps(value))
+            return True
+        except Exception as e:
+            logger.error("Failed to cache value for namespace=%s key=%s: %s", namespace, key, e)
+            return None
+
+    async def aget_cache_value(self, namespace: str, key: str) -> Any | None:
+        """Retrieve a generic cache value from Redis."""
+        try:
+            cache_key = self._get_generic_cache_key(namespace, key)
+            cached_data = await self.redis.get(cache_key)
+            if not cached_data:
+                return None
+            return json.loads(cached_data)
+        except Exception as e:
+            logger.error(
+                "Failed to get cached value for namespace=%s key=%s: %s", namespace, key, e
+            )
+            return None
+
+    async def aclear_cache_value(self, namespace: str, key: str) -> Any | None:
+        """Delete a generic cache value from Redis."""
+        try:
+            cache_key = self._get_generic_cache_key(namespace, key)
+            return await self.redis.delete(cache_key)
+        except Exception as e:
+            logger.error(
+                "Failed to clear cached value for namespace=%s key=%s: %s",
+                namespace,
+                key,
+                e,
+            )
+            return None
 
     ###########################
     #### MESSAGE METHODS ######

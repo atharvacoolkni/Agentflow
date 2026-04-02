@@ -12,6 +12,7 @@ import os
 import re
 import unicodedata
 
+
 # ---------------------------------------------------------------------------
 # Magic bytes signatures for common image/document types
 # ---------------------------------------------------------------------------

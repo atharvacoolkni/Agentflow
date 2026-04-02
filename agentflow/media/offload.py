@@ -11,7 +11,7 @@ from __future__ import annotations
 import base64
 import logging
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from agentflow.state.message_block import (
     AudioBlock,
@@ -19,6 +19,7 @@ from agentflow.state.message_block import (
     ImageBlock,
     VideoBlock,
 )
+
 
 if TYPE_CHECKING:
     from agentflow.media.storage.base import BaseMediaStore
@@ -36,11 +37,11 @@ class MediaOffloadPolicy(str, Enum):
 
 
 async def ensure_media_offloaded(
-    message: "Message",
-    store: "BaseMediaStore",
+    message: Message,
+    store: BaseMediaStore,
     policy: MediaOffloadPolicy = MediaOffloadPolicy.THRESHOLD,
     max_inline_bytes: int = 50_000,
-) -> "Message":
+) -> Message:
     """Replace large inline ``data_base64`` blobs with MediaStore references.
 
     Mutates the message in-place (replaces ``block.media``) and returns it.

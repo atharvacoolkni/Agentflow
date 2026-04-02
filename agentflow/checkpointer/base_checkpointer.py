@@ -193,6 +193,49 @@ class BaseCheckpointer[StateT: AgentState](ABC):
         return run_coroutine(self.aget_state_cache(config))
 
     # -------------------------
+    # Generic cache methods
+    # -------------------------
+    async def aput_cache_value(
+        self,
+        namespace: str,
+        key: str,
+        value: Any,
+        ttl_seconds: int | None = None,
+    ) -> Any | None:
+        """Store a small JSON-serializable cache value.
+
+        This is intentionally optional so existing checkpointers keep working
+        even if they do not offer a shared cache backend.
+        """
+        return None
+
+    async def aget_cache_value(self, namespace: str, key: str) -> Any | None:
+        """Retrieve a cached value previously stored via ``aput_cache_value``."""
+        return None
+
+    async def aclear_cache_value(self, namespace: str, key: str) -> Any | None:
+        """Delete a previously cached value."""
+        return None
+
+    def put_cache_value(
+        self,
+        namespace: str,
+        key: str,
+        value: Any,
+        ttl_seconds: int | None = None,
+    ) -> Any | None:
+        """Synchronously store a small cache value."""
+        return run_coroutine(self.aput_cache_value(namespace, key, value, ttl_seconds))
+
+    def get_cache_value(self, namespace: str, key: str) -> Any | None:
+        """Synchronously retrieve a small cache value."""
+        return run_coroutine(self.aget_cache_value(namespace, key))
+
+    def clear_cache_value(self, namespace: str, key: str) -> Any | None:
+        """Synchronously delete a small cache value."""
+        return run_coroutine(self.aclear_cache_value(namespace, key))
+
+    # -------------------------
     # Message methods async
     # -------------------------
     @abstractmethod

@@ -97,7 +97,7 @@ Path 1: AgentState → PG states table (JSONB)
   ⚠️ Each state save RE-SERIALIZES ALL messages including ALL images from ALL turns
   ⚠️ A 10-turn conversation with 3 images ≈ 30MB+ in a single JSONB cell, growing every turn
 
-Path 2: Messages → PG messages table (TEXT)  
+Path 2: Messages → PG messages table (TEXT)
   [block.model_dump(mode="json") for block in message.content] → json.dumps() → INSERT INTO messages(content TEXT)
   ⚠️ Each image block with data_base64 ≈ 1-5MB stored as TEXT per message row
 
@@ -311,25 +311,25 @@ The key insight: **fix the input, not the storage.** If only references enter me
 ```
 Client Upload                    PyAgenity Core                    Provider API
 ─────────────                    ──────────────                    ────────────
-                                                                  
-image/pdf/docx  ──► API endpoint ──► MediaProcessor ──► Message   
-                    (FastAPI)         - validate           │      
-                    - file upload     - store binary       │      
-                    - base64          - create MediaRef    │      
-                    - URL                                  │      
-                                                           ▼      
-                                                    ContentBlock   
-                                                    (ImageBlock,   
+
+image/pdf/docx  ──► API endpoint ──► MediaProcessor ──► Message
+                    (FastAPI)         - validate           │
+                    - file upload     - store binary       │
+                    - base64          - create MediaRef    │
+                    - URL                                  │
+                                                           ▼
+                                                    ContentBlock
+                                                    (ImageBlock,
                                                      DocumentBlock,
-                                                     etc.)         
-                                                           │      
-                                    ┌──────────────────────┤      
-                                    ▼                      ▼      
-                              convert_dict()         Google format  
-                              (OpenAI format)        (types.Part)   
-                                    │                      │      
-                                    ▼                      ▼      
-                              OpenAI API              Gemini API   
+                                                     etc.)
+                                                           │
+                                    ┌──────────────────────┤
+                                    ▼                      ▼
+                              convert_dict()         Google format
+                              (OpenAI format)        (types.Part)
+                                    │                      │
+                                    ▼                      ▼
+                              OpenAI API              Gemini API
 ```
 
 ### Design Philosophy: Library vs API
@@ -379,12 +379,12 @@ agentflow_cli/                      # pyagenity-api — document extraction live
         BASE64 = "base64"           # Inline base64 in API call
         URL = "url"                 # Pass URL reference
         FILE_ID = "file_id"         # Use provider file upload API
-    
+
     class DocumentHandling(str, Enum):
         EXTRACT_TEXT = "extract_text"   # Read PDF/DOCX → pass as text
         PASS_RAW = "pass_raw"           # Pass binary to AI (if provider supports)
         SKIP = "skip"                   # Don't send documents to AI
-    
+
     class MultimodalConfig(BaseModel):
         image_handling: ImageHandling = ImageHandling.BASE64
         document_handling: DocumentHandling = DocumentHandling.EXTRACT_TEXT
@@ -425,7 +425,7 @@ agentflow_cli/                      # pyagenity-api — document extraction live
 - [x] **1.7** Write tests
   - Test `_convert_dict` with ImageBlock (base64, URL, file_id)
   - Test Google format conversion with images
-  - Test OpenAI format conversion with images 
+  - Test OpenAI format conversion with images
   - Test end-to-end: Message with image → provider call format
   - Test backward compatibility: text-only still works
 
@@ -678,7 +678,7 @@ AFTER (fixed):
   Image bytes → MediaStore.store(bytes) → key "abc123"
   → MediaRef(kind="url", url="agentflow://media/abc123") ← ~100 bytes
   → Message → AgentState.context → PgCheckpointer → 100 bytes in JSONB + 100 bytes in TEXT + 100 bytes in Redis
-  
+
   Actual binary stored ONCE in:
   - InMemoryMediaStore: Python dict (testing)
   - LocalFileMediaStore: filesystem (dev)
@@ -686,8 +686,8 @@ AFTER (fixed):
   - CloudMediaStore: S3 / GCS bucket via cloud-storage-manager (production)
 ```
 
-**Checkpointer itself: ZERO changes needed.**  
-**DB schema for states/messages: ZERO changes needed.**  
+**Checkpointer itself: ZERO changes needed.**
+**DB schema for states/messages: ZERO changes needed.**
 **The fix is entirely at the ingestion boundary and the LLM conversion boundary.**
 
 ### Sprint 4: API Layer — File Upload Endpoints (pyagenity-api)
@@ -697,14 +697,14 @@ AFTER (fixed):
   ```
   POST /v1/files/upload
   Content-Type: multipart/form-data
-  
+
   Response: {
     "file_id": "file_abc123",
-    "mime_type": "image/jpeg", 
+    "mime_type": "image/jpeg",
     "size_bytes": 102400,
     "filename": "photo.jpg",
     "extracted_text": "... (populated for supported document types, null for images/binary)",
-    "url": "/v1/files/file_abc123"  
+    "url": "/v1/files/file_abc123"
   }
   ```
   - For images/audio: store binary in `MediaStore`, return `file_id`
@@ -715,7 +715,7 @@ AFTER (fixed):
   ```
   GET /v1/files/{file_id}
   → Returns file binary with correct Content-Type
-  
+
   GET /v1/files/{file_id}/info
   → Returns file metadata (filename, mime_type, size_bytes, extracted_text if available)
   ```
@@ -742,7 +742,7 @@ AFTER (fixed):
     ```json
     {
       "messages": [{
-        "role": "user", 
+        "role": "user",
         "content": [
           {"type": "text", "text": "Analyze this PDF"},
           {"type": "document", "media": {"kind": "file_id", "file_id": "file_abc123", "mime_type": "application/pdf"}}

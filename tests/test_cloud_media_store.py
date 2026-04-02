@@ -179,6 +179,12 @@ class TestCloudMediaStore:
         with patch.object(store, "_download_meta", new_callable=AsyncMock, return_value=None):
             assert await store.exists("nonexistent000000000000000000000") is False
 
+    @pytest.mark.asyncio
+    async def test_get_metadata(self, store):
+        meta = {"mime_type": "image/png", "size_bytes": 4, "ext": ".png"}
+        with patch.object(store, "_download_meta", new_callable=AsyncMock, return_value=meta):
+            assert await store.get_metadata("somekey00000000000000000000000") == meta
+
     # ---- get_public_url --------------------------------------------------
 
     @pytest.mark.asyncio
@@ -197,6 +203,20 @@ class TestCloudMediaStore:
         with patch.object(store, "_download_meta", new_callable=AsyncMock, return_value=None):
             with pytest.raises(KeyError, match="Media not found"):
                 await store.get_public_url("nonexistent000000000000000000000")
+
+    @pytest.mark.asyncio
+    async def test_get_direct_url_uses_mime_without_meta_lookup(self, store, mock_storage):
+        url = await store.get_direct_url(
+            "abcdef0123456789abcdef0123456789",
+            mime_type="image/png",
+            expiration=123,
+        )
+
+        assert url == "https://signed-url.example.com/blob"
+        mock_storage.get_public_url.assert_awaited_once_with(
+            "test-media/ab/cd/abcdef0123456789abcdef0123456789.png",
+            expiration=123,
+        )
 
     # ---- to_media_ref ----------------------------------------------------
 
