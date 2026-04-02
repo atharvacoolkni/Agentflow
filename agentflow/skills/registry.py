@@ -157,16 +157,18 @@ class SkillsRegistry:
             "When the user's request matches a skill:\n",
             "1. Call `set_skill(skill_name)` to load the skill instructions\n",
             "2. Read the loaded content — it may reference additional resources\n",
-            "3. If you need a specific resource mentioned in the skill, call `set_skill(skill_name, resource_name)`\n",
+            "3. If you need a specific resource mentioned in the skill, "
+            "call `set_skill(skill_name, resource_name)`\n",
             "4. Then provide your answer using the loaded content\n",
             "### Skills & Resources\n",
         ]
 
         for meta in skills:
             # Skill header with triggers
-            triggers_str = ", ".join(f'"{t}"' for t in meta.triggers[:4])
-            if len(meta.triggers) > 4:
-                triggers_str += f" (+{len(meta.triggers) - 4} more)"
+            max_triggers_display = 4
+            triggers_str = ", ".join(f'"{t}"' for t in meta.triggers[:max_triggers_display])
+            if len(meta.triggers) > max_triggers_display:
+                triggers_str += f" (+{len(meta.triggers) - max_triggers_display} more)"
             lines.append(f"**`{meta.name}`** — triggers: {triggers_str}")
             lines.append("")
 
