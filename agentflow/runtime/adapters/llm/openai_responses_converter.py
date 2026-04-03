@@ -18,6 +18,7 @@ import inspect
 import json
 import logging
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -42,6 +43,25 @@ from .reasoning_utils import (
 
 
 logger = logging.getLogger("agentflow.adapters.openai_responses")
+
+
+@dataclass
+class _ResponseStreamState:
+    """Mutable state accumulated while consuming a Responses API stream."""
+
+    accumulated_text: str = ""
+    accumulated_reasoning: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
+    current_fc_name: str = ""
+    current_fc_args: str = ""
+    current_fc_call_id: str = ""
+    usages: TokenUsages = field(
+        default_factory=lambda: TokenUsages(
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -174,245 +194,211 @@ class OpenAIResponsesConverter(BaseConverter):
         meta: dict | None = None,
     ) -> AsyncGenerator[Message]:
         """Internal stream handler."""
-
-        accumulated_text = ""
-        accumulated_reasoning = ""
-        tool_calls: list[dict] = []
-
-        # Track current function call being built
-        current_fc_name = ""
-        current_fc_args = ""
-        current_fc_call_id = ""
+        state = _ResponseStreamState()
 
         is_awaitable = inspect.isawaitable(stream)
         if is_awaitable:
             stream = await stream
 
-        # --- async iteration ---
-        try:
-            async for event in stream:
-                event_type = getattr(event, "type", "")
-
-                # Text delta
-                if event_type == "response.output_text.delta":
-                    delta_text = getattr(event, "delta", "")
-                    accumulated_text += delta_text
-                    yield Message(
-                        message_id=generate_id(None),
-                        role="assistant",
-                        content=[TextBlock(text=delta_text)] if delta_text else [],
-                        delta=True,
-                    )
-
-                # Reasoning summary delta
-                elif event_type == "response.reasoning_summary_text.delta":
-                    delta_r = getattr(event, "delta", "")
-                    accumulated_reasoning += delta_r
-
-                # Function call argument delta
-                elif event_type == "response.function_call_arguments.delta":
-                    current_fc_args += getattr(event, "delta", "")
-
-                # New output item
-                elif event_type == "response.output_item.added":
-                    item = getattr(event, "item", None)
-                    if item:
-                        itype = getattr(item, "type", "")
-                        if itype == "function_call":
-                            current_fc_name = getattr(item, "name", "")
-                            current_fc_call_id = getattr(item, "call_id", "")
-                            current_fc_args = ""
-
-                # Output item done
-                elif event_type == "response.output_item.done":
-                    item = getattr(event, "item", None)
-                    if item:
-                        itype = getattr(item, "type", "")
-                        if itype == "function_call":
-                            # Finalise the function call
-                            name = getattr(item, "name", current_fc_name)
-                            raw_args = getattr(item, "arguments", current_fc_args)
-                            call_id = getattr(item, "call_id", current_fc_call_id)
-                            try:
-                                args_dict = json.loads(raw_args) if raw_args else {}
-                            except json.JSONDecodeError:
-                                args_dict = {}
-                            tool_calls.append(
-                                {
-                                    "id": call_id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": name,
-                                        "arguments": raw_args or "{}",
-                                    },
-                                }
-                            )
-                            yield Message(
-                                message_id=generate_id(None),
-                                role="assistant",
-                                content=[ToolCallBlock(name=name, args=args_dict, id=call_id)],
-                                delta=True,
-                            )
-                            # Reset accumulators
-                            current_fc_name = ""
-                            current_fc_args = ""
-                            current_fc_call_id = ""
-
-                        elif itype == "reasoning":
-                            r = self._extract_reasoning_from_item(item)
-                            if r:
-                                accumulated_reasoning += ("\n" + r) if accumulated_reasoning else r
-
-                        elif itype == "message":
-                            # Extract media blocks from completed message items
-                            media_blocks = self._extract_media_from_message_item(item)
-                            if media_blocks:
-                                yield Message(
-                                    message_id=generate_id(None),
-                                    role="assistant",
-                                    content=media_blocks,
-                                    delta=True,
-                                )
-
-                        elif itype in ("image_generation_call", "image_generation"):
-                            img_block = self._extract_image_generation(item)
-                            if img_block:
-                                yield Message(
-                                    message_id=generate_id(None),
-                                    role="assistant",
-                                    content=[img_block],
-                                    delta=True,
-                                )
-
-                # Stream completed — we'll build the final message below
-                elif event_type == "response.completed":
-                    # Extract usage from the completed response if available
-                    completed_response = getattr(event, "response", None)
-                    if completed_response:
-                        usages = self._extract_token_usage(completed_response)
-                    else:
-                        usages = TokenUsages()
-                    break
-            else:
-                # Stream ended without response.completed event
-                usages = TokenUsages()
-
-        except TypeError:
-            # Not async-iterable — try sync iteration
-            for event in stream:
-                event_type = getattr(event, "type", "")
-
-                if event_type == "response.output_text.delta":
-                    delta_text = getattr(event, "delta", "")
-                    accumulated_text += delta_text
-                    yield Message(
-                        message_id=generate_id(None),
-                        role="assistant",
-                        content=[TextBlock(text=delta_text)] if delta_text else [],
-                        delta=True,
-                    )
-                elif event_type == "response.reasoning_summary_text.delta":
-                    accumulated_reasoning += getattr(event, "delta", "")
-                elif event_type == "response.function_call_arguments.delta":
-                    current_fc_args += getattr(event, "delta", "")
-                elif event_type == "response.output_item.added":
-                    item = getattr(event, "item", None)
-                    if item and getattr(item, "type", "") == "function_call":
-                        current_fc_name = getattr(item, "name", "")
-                        current_fc_call_id = getattr(item, "call_id", "")
-                        current_fc_args = ""
-                elif event_type == "response.output_item.done":
-                    item = getattr(event, "item", None)
-                    if item and getattr(item, "type", "") == "function_call":
-                        name = getattr(item, "name", current_fc_name)
-                        raw_args = getattr(item, "arguments", current_fc_args)
-                        call_id = getattr(item, "call_id", current_fc_call_id)
-                        try:
-                            args_dict = json.loads(raw_args) if raw_args else {}
-                        except json.JSONDecodeError:
-                            args_dict = {}
-                        tool_calls.append(
-                            {
-                                "id": call_id,
-                                "type": "function",
-                                "function": {"name": name, "arguments": raw_args or "{}"},
-                            }
-                        )
-                        yield Message(
-                            message_id=generate_id(None),
-                            role="assistant",
-                            content=[ToolCallBlock(name=name, args=args_dict, id=call_id)],
-                            delta=True,
-                        )
-                        current_fc_name = ""
-                        current_fc_args = ""
-                        current_fc_call_id = ""
-                    elif item and getattr(item, "type", "") == "reasoning":
-                        r = self._extract_reasoning_from_item(item)
-                        if r:
-                            accumulated_reasoning += ("\n" + r) if accumulated_reasoning else r
-                    elif item and getattr(item, "type", "") == "message":
-                        media_blocks = self._extract_media_from_message_item(item)
-                        if media_blocks:
-                            yield Message(
-                                message_id=generate_id(None),
-                                role="assistant",
-                                content=media_blocks,
-                                delta=True,
-                            )
-                    elif item and getattr(item, "type", "") in (
-                        "image_generation_call",
-                        "image_generation",
-                    ):
-                        img_block = self._extract_image_generation(item)
-                        if img_block:
-                            yield Message(
-                                message_id=generate_id(None),
-                                role="assistant",
-                                content=[img_block],
-                                delta=True,
-                            )
-                elif event_type == "response.completed":
-                    completed_response = getattr(event, "response", None)
-                    if completed_response:
-                        usages = self._extract_token_usage(completed_response)
-                    else:
-                        usages = TokenUsages()
-                    break
-            else:
-                usages = TokenUsages()
+        async for event in self._iterate_stream_events(stream):
+            messages, completed = self._process_stream_event(state, event)
+            for message in messages:
+                yield message
+            if completed:
+                break
 
         # --- final message -------------------------------------------------
         metadata = meta or {}
         metadata["provider"] = "openai"
         metadata["node_name"] = node_name
         metadata["thread_id"] = config.get("thread_id")
-
-        final_blocks: list = []
-        if accumulated_text:
-            final_blocks.append(TextBlock(text=accumulated_text))
-        if accumulated_reasoning:
-            final_blocks.append(ReasoningBlock(summary=accumulated_reasoning))
-        for tc in tool_calls:
-            fd = tc.get("function", {})
-            try:
-                args = json.loads(fd.get("arguments", "{}"))
-            except json.JSONDecodeError:
-                args = {}
-            final_blocks.append(
-                ToolCallBlock(name=fd.get("name", ""), args=args, id=tc.get("id", ""))
-            )
+        final_blocks = self._build_final_blocks(state)
 
         yield Message(
             message_id=generate_id(None),
             role="assistant",
             content=final_blocks,
-            reasoning=accumulated_reasoning,
+            reasoning=state.accumulated_reasoning,
             delta=False,
-            tools_calls=tool_calls if tool_calls else None,
+            tools_calls=state.tool_calls if state.tool_calls else None,
             metadata=metadata,
-            usages=usages,
+            usages=state.usages,
         )
+
+    async def _iterate_stream_events(self, stream: Any) -> AsyncGenerator[Any]:
+        """Yield stream events from async or sync Responses API iterators."""
+        try:
+            async for event in stream:
+                yield event
+            return
+        except TypeError:
+            pass
+
+        for event in stream:
+            yield event
+
+    def _process_stream_event(
+        self,
+        state: _ResponseStreamState,
+        event: Any,
+    ) -> tuple[list[Message], bool]:
+        """Apply one streaming event and return delta messages plus completion state."""
+        event_type = getattr(event, "type", "")
+        simple_handlers = {
+            "response.output_text.delta": self._handle_text_delta,
+            "response.reasoning_summary_text.delta": self._handle_reasoning_delta,
+            "response.function_call_arguments.delta": self._handle_function_call_argument_delta,
+            "response.output_item.added": self._handle_output_item_added,
+        }
+
+        handler = simple_handlers.get(event_type)
+        if handler is not None:
+            return handler(state, event), False
+        if event_type == "response.output_item.done":
+            return self._handle_output_item_done(state, getattr(event, "item", None)), False
+        if event_type == "response.completed":
+            state.usages = self._extract_token_usage(getattr(event, "response", None))
+            return [], True
+        return [], False
+
+    def _handle_text_delta(self, state: _ResponseStreamState, event: Any) -> list[Message]:
+        """Handle a text delta event."""
+        delta_text = getattr(event, "delta", "")
+        state.accumulated_text += delta_text
+        return [self._build_delta_message([TextBlock(text=delta_text)] if delta_text else [])]
+
+    def _handle_reasoning_delta(self, state: _ResponseStreamState, event: Any) -> list[Message]:
+        """Accumulate streaming reasoning text."""
+        state.accumulated_reasoning += getattr(event, "delta", "")
+        return []
+
+    def _handle_function_call_argument_delta(
+        self,
+        state: _ResponseStreamState,
+        event: Any,
+    ) -> list[Message]:
+        """Accumulate partial function-call arguments."""
+        state.current_fc_args += getattr(event, "delta", "")
+        return []
+
+    def _handle_output_item_added(self, state: _ResponseStreamState, event: Any) -> list[Message]:
+        """Track metadata for newly opened output items."""
+        item = getattr(event, "item", None)
+        if item and getattr(item, "type", "") == "function_call":
+            state.current_fc_name = getattr(item, "name", "")
+            state.current_fc_call_id = getattr(item, "call_id", "")
+            state.current_fc_args = ""
+        return []
+
+    def _handle_output_item_done(
+        self,
+        state: _ResponseStreamState,
+        item: Any,
+    ) -> list[Message]:
+        """Process a completed output item."""
+        item_type = getattr(item, "type", "") if item else ""
+        handlers = {
+            "function_call": self._finalize_function_call,
+            "reasoning": self._handle_reasoning_item_done,
+            "message": self._handle_message_item_done,
+            "image_generation_call": self._handle_image_item_done,
+            "image_generation": self._handle_image_item_done,
+        }
+        handler = handlers.get(item_type)
+        if handler is None:
+            return []
+        return handler(state, item)
+
+    def _finalize_function_call(self, state: _ResponseStreamState, item: Any) -> list[Message]:
+        """Finalize a completed function call item."""
+        name = getattr(item, "name", state.current_fc_name)
+        raw_args = getattr(item, "arguments", state.current_fc_args)
+        call_id = getattr(item, "call_id", state.current_fc_call_id)
+        state.tool_calls.append(
+            {
+                "id": call_id,
+                "type": "function",
+                "function": {"name": name, "arguments": raw_args or "{}"},
+            }
+        )
+        state.current_fc_name = ""
+        state.current_fc_args = ""
+        state.current_fc_call_id = ""
+        return [
+            self._build_delta_message(
+                [ToolCallBlock(name=name, args=self._parse_json_args(raw_args), id=call_id)]
+            )
+        ]
+
+    def _handle_reasoning_item_done(
+        self,
+        state: _ResponseStreamState,
+        item: Any,
+    ) -> list[Message]:
+        """Append completed reasoning summaries to the accumulated reasoning text."""
+        reasoning = self._extract_reasoning_from_item(item)
+        if reasoning:
+            prefix = "\n" if state.accumulated_reasoning else ""
+            state.accumulated_reasoning += f"{prefix}{reasoning}"
+        return []
+
+    def _handle_message_item_done(
+        self,
+        _state: _ResponseStreamState,
+        item: Any,
+    ) -> list[Message]:
+        """Emit media blocks from completed message items."""
+        media_blocks = self._extract_media_from_message_item(item)
+        if not media_blocks:
+            return []
+        return [self._build_delta_message(media_blocks)]
+
+    def _handle_image_item_done(
+        self,
+        _state: _ResponseStreamState,
+        item: Any,
+    ) -> list[Message]:
+        """Emit an image block from image generation events."""
+        img_block = self._extract_image_generation(item)
+        if not img_block:
+            return []
+        return [self._build_delta_message([img_block])]
+
+    @staticmethod
+    def _build_delta_message(content: list) -> Message:
+        """Build a streaming delta message."""
+        return Message(
+            message_id=generate_id(None),
+            role="assistant",
+            content=content,
+            delta=True,
+        )
+
+    @staticmethod
+    def _parse_json_args(raw_args: str) -> dict:
+        """Parse tool call arguments, defaulting to an empty dict on invalid JSON."""
+        try:
+            return json.loads(raw_args) if raw_args else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def _build_final_blocks(self, state: _ResponseStreamState) -> list:
+        """Build the final content blocks after a Responses API stream ends."""
+        final_blocks: list = []
+        if state.accumulated_text:
+            final_blocks.append(TextBlock(text=state.accumulated_text))
+        if state.accumulated_reasoning:
+            final_blocks.append(ReasoningBlock(summary=state.accumulated_reasoning))
+        for tool_call in state.tool_calls:
+            function_data = tool_call.get("function", {})
+            final_blocks.append(
+                ToolCallBlock(
+                    name=function_data.get("name", ""),
+                    args=self._parse_json_args(function_data.get("arguments", "{}")),
+                    id=tool_call.get("id", ""),
+                )
+            )
+        return final_blocks
 
     # ---- private helpers ------------------------------------------------
 
@@ -561,6 +547,9 @@ class OpenAIResponsesConverter(BaseConverter):
     @staticmethod
     def _extract_token_usage(response: Any) -> TokenUsages:
         """Map Responses API usage fields to ``TokenUsages``."""
+        if response is None:
+            return TokenUsages(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+
         usage = getattr(response, "usage", None)
         if not usage:
             return TokenUsages(prompt_tokens=0, completion_tokens=0, total_tokens=0)

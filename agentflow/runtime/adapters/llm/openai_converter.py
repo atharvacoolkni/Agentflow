@@ -22,6 +22,7 @@ from agentflow.core.state.message_block import (
 )
 
 from .base_converter import BaseConverter
+from .openai_responses_converter import OpenAIResponsesConverter, is_responses_api_response
 from .reasoning_utils import parse_think_tags, parse_thought_tags
 
 
@@ -71,115 +72,20 @@ class OpenAIConverter(BaseConverter):
             raise ImportError("openai is not installed. Please install it to use this converter.")
 
         # Auto-detect Responses API objects and delegate
-        from .openai_responses_converter import is_responses_api_response
-
         if is_responses_api_response(response):
-            from .openai_responses_converter import OpenAIResponsesConverter
-
             delegate = OpenAIResponsesConverter(state=self.state)
             return await delegate.convert_response(response)
 
-        # Extract usage information
-        usage = response.usage
-        usages = TokenUsages(
-            completion_tokens=usage.completion_tokens if usage else 0,
-            prompt_tokens=usage.prompt_tokens if usage else 0,
-            total_tokens=usage.total_tokens if usage else 0,
-            reasoning_tokens=getattr(
-                getattr(usage, "completion_tokens_details", None), "reasoning_tokens", 0
-            )
-            if usage
-            else 0,
-            cache_creation_input_tokens=0,
-            cache_read_input_tokens=getattr(
-                getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0
-            )
-            if usage
-            else 0,
-        )
+        usages = self._extract_usage(response)
 
-        # Extract message data
         choice = response.choices[0] if response.choices else None
         if not choice:
-            # Return empty message if no choices
-            return Message(
-                message_id=generate_id(response.id),
-                role="assistant",
-                content=[],
-                timestamp=getattr(response, "created", datetime.now().timestamp()),
-                metadata={
-                    "provider": "openai",
-                    "model": response.model,
-                    "finish_reason": "UNKNOWN",
-                },
-                usages=usages,
-            )
+            return self._build_empty_response_message(response, usages)
 
         message = choice.message
-        content = message.content or ""
-        reasoning_content = getattr(message, "reasoning_content", "") or ""
-        # OpenRouter returns reasoning in `message.reasoning` (not `reasoning_content`)
-        if not reasoning_content:
-            reasoning_content = getattr(message, "reasoning", "") or ""
-        audio_data = getattr(message, "audio", None)
-        # OpenAI doesn't directly return images in completion, but we handle it for consistency
-        images_data = getattr(message, "images", None)
-
-        # Extract <think>/<thought> tags from content if reasoning_content field is empty
-        # (DeepSeek-R1, Qwen-thinking, Gemini via OpenAI-compatible, and similar models)
-        if not reasoning_content and content:
-            content, think_reasoning = parse_think_tags(content)
-            if think_reasoning:
-                reasoning_content = think_reasoning
-        if not reasoning_content and content:
-            content, thought_reasoning = parse_thought_tags(content)
-            if thought_reasoning:
-                reasoning_content = thought_reasoning
-
-        # Build content blocks
-        blocks = []
-        # Add reasoning block first for consistency with processing order
-        if reasoning_content:
-            blocks.append(ReasoningBlock(summary=reasoning_content))
-        if content:
-            blocks.append(TextBlock(text=content))
-
-        # Extract audio if present
-        if audio_data:
-            audio_block = self._extract_audio_block(audio_data)
-            if audio_block:
-                blocks.append(audio_block)
-
-        # Extract images if present
-        if images_data:
-            image_blocks = self._extract_image_blocks(images_data)
-            blocks.extend(image_blocks)
-
-        # Extract tool calls
-        final_tool_calls = []
-        if message.tool_calls:
-            for tool_call in message.tool_calls:
-                blocks.append(
-                    ToolCallBlock(
-                        name=tool_call.function.name,
-                        args=json.loads(tool_call.function.arguments),
-                        id=tool_call.id,
-                    )
-                )
-                # Store raw tool call
-                if hasattr(tool_call, "model_dump"):
-                    final_tool_calls.append(tool_call.model_dump())
-                else:
-                    final_tool_calls.append(
-                        {
-                            "id": tool_call.id,
-                            "type": tool_call.type,
-                            "function": {
-                                "name": tool_call.function.name,
-                                "arguments": tool_call.function.arguments,
-                            },
-                        }
-                    )
+        content, reasoning_content = self._extract_message_text_and_reasoning(message)
+        blocks = self._build_response_blocks(message, content, reasoning_content)
+        final_tool_calls = self._append_tool_call_blocks(message, blocks)
 
         logger.debug("Creating message from OpenAI response with id: %s", response.id)
 
@@ -200,6 +106,111 @@ class OpenAIConverter(BaseConverter):
             raw=response.model_dump() if hasattr(response, "model_dump") else {},
             tools_calls=final_tool_calls if final_tool_calls else None,
         )
+
+    @staticmethod
+    def _extract_usage(response: ChatCompletion) -> TokenUsages:  # type: ignore
+        """Extract token usage from a ChatCompletion response."""
+        usage = response.usage
+        return TokenUsages(
+            completion_tokens=usage.completion_tokens if usage else 0,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            total_tokens=usage.total_tokens if usage else 0,
+            reasoning_tokens=getattr(
+                getattr(usage, "completion_tokens_details", None), "reasoning_tokens", 0
+            )
+            if usage
+            else 0,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=getattr(
+                getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0
+            )
+            if usage
+            else 0,
+        )
+
+    @staticmethod
+    def _build_empty_response_message(
+        response: ChatCompletion,  # type: ignore
+        usages: TokenUsages,
+    ) -> Message:
+        """Build an empty assistant message when no choices were returned."""
+        return Message(
+            message_id=generate_id(response.id),
+            role="assistant",
+            content=[],
+            timestamp=getattr(response, "created", datetime.now().timestamp()),
+            metadata={
+                "provider": "openai",
+                "model": response.model,
+                "finish_reason": "UNKNOWN",
+            },
+            usages=usages,
+        )
+
+    @staticmethod
+    def _extract_message_text_and_reasoning(message: Any) -> tuple[str, str]:
+        """Extract assistant text and reasoning, including inline reasoning tags."""
+        content = message.content or ""
+        reasoning_content = getattr(message, "reasoning_content", "") or ""
+        if not reasoning_content:
+            reasoning_content = getattr(message, "reasoning", "") or ""
+
+        if not reasoning_content and content:
+            content, think_reasoning = parse_think_tags(content)
+            reasoning_content = think_reasoning or reasoning_content
+        if not reasoning_content and content:
+            content, thought_reasoning = parse_thought_tags(content)
+            reasoning_content = thought_reasoning or reasoning_content
+
+        return content, reasoning_content
+
+    def _build_response_blocks(
+        self,
+        message: Any,
+        content: str,
+        reasoning_content: str,
+    ) -> list:
+        """Build non-tool content blocks for a response message."""
+        blocks = []
+        if reasoning_content:
+            blocks.append(ReasoningBlock(summary=reasoning_content))
+        if content:
+            blocks.append(TextBlock(text=content))
+
+        audio_block = self._extract_audio_block(getattr(message, "audio", None))
+        if audio_block:
+            blocks.append(audio_block)
+
+        blocks.extend(self._extract_image_blocks(getattr(message, "images", None)))
+        return blocks
+
+    def _append_tool_call_blocks(self, message: Any, blocks: list) -> list[dict]:
+        """Append tool call blocks and return raw tool call payloads."""
+        final_tool_calls: list[dict] = []
+        for tool_call in getattr(message, "tool_calls", None) or []:
+            blocks.append(
+                ToolCallBlock(
+                    name=tool_call.function.name,
+                    args=json.loads(tool_call.function.arguments),
+                    id=tool_call.id,
+                )
+            )
+            final_tool_calls.append(self._serialize_tool_call(tool_call))
+        return final_tool_calls
+
+    @staticmethod
+    def _serialize_tool_call(tool_call: Any) -> dict:
+        """Convert an OpenAI tool call object into a plain dictionary."""
+        if hasattr(tool_call, "model_dump"):
+            return tool_call.model_dump()
+        return {
+            "id": tool_call.id,
+            "type": tool_call.type,
+            "function": {
+                "name": tool_call.function.name,
+                "arguments": tool_call.function.arguments,
+            },
+        }
 
     def _extract_audio_block(self, audio_data: Any) -> AudioBlock | None:
         """Extract audio block from OpenAI audio data.
@@ -388,36 +399,33 @@ class OpenAIConverter(BaseConverter):
     def _process_chunk(
         self,
         chunk: ChatCompletionChunk | None,  # type: ignore
-        seq: int,
         accumulated_content: str,
         accumulated_reasoning_content: str,
         tool_calls: list,
         tool_ids: set,
-    ) -> tuple[str, str, list, int, Message | None]:
+    ) -> tuple[str, str, Message | None]:
         """
         Process a single chunk from an OpenAI streaming response.
 
         Args:
             chunk: The current chunk from the stream.
-            seq: Sequence number of the chunk.
             accumulated_content: Accumulated text content so far.
             accumulated_reasoning_content: Accumulated reasoning content so far.
             tool_calls: List of tool calls detected so far.
             tool_ids: Set of tool call IDs to avoid duplicates.
 
         Returns:
-            tuple: Updated accumulated content, reasoning, tool calls, sequence,
-                and Message (if any).
+            tuple: Updated accumulated content, reasoning, and Message (if any).
         """
         if not chunk:
-            return accumulated_content, accumulated_reasoning_content, tool_calls, seq, None
+            return accumulated_content, accumulated_reasoning_content, None
 
         if not chunk.choices or len(chunk.choices) == 0:
-            return accumulated_content, accumulated_reasoning_content, tool_calls, seq, None
+            return accumulated_content, accumulated_reasoning_content, None
 
         delta = chunk.choices[0].delta
         if delta is None:
-            return accumulated_content, accumulated_reasoning_content, tool_calls, seq, None
+            return accumulated_content, accumulated_reasoning_content, None
 
         # Extract content blocks
         text_part, reasoning_part, content_blocks = self._extract_delta_content_blocks(delta)
@@ -436,13 +444,59 @@ class OpenAIConverter(BaseConverter):
             delta=True,
         )
 
-        return (
-            accumulated_content,
-            accumulated_reasoning_content,
-            tool_calls,
-            seq,
-            output_message,
-        )
+        return accumulated_content, accumulated_reasoning_content, output_message
+
+    async def _iterate_stream_chunks(self, stream: Any) -> AsyncGenerator[Any]:
+        """Yield chunks from either async or sync OpenAI streams."""
+        try:
+            async for chunk in stream:  # type: ignore
+                yield chunk
+            return
+        except Exception:  # noqa: S110 # nosec B110
+            pass
+
+        try:
+            for chunk in stream:
+                yield chunk
+        except Exception:  # noqa: S110 # nosec B110
+            pass
+
+    @staticmethod
+    def _extract_stream_reasoning(
+        accumulated_content: str,
+        accumulated_reasoning_content: str,
+    ) -> tuple[str, str]:
+        """Recover reasoning from inline tags when no dedicated reasoning delta exists."""
+        if not accumulated_reasoning_content and accumulated_content:
+            accumulated_content, think_reasoning = parse_think_tags(accumulated_content)
+            accumulated_reasoning_content = think_reasoning or accumulated_reasoning_content
+        if not accumulated_reasoning_content and accumulated_content:
+            accumulated_content, thought_reasoning = parse_thought_tags(accumulated_content)
+            accumulated_reasoning_content = thought_reasoning or accumulated_reasoning_content
+        return accumulated_content, accumulated_reasoning_content
+
+    @staticmethod
+    def _build_stream_blocks(
+        accumulated_content: str,
+        accumulated_reasoning_content: str,
+        tool_calls: list[dict],
+    ) -> list:
+        """Build the final block list for a streaming response."""
+        blocks = []
+        if accumulated_content:
+            blocks.append(TextBlock(text=accumulated_content))
+        if accumulated_reasoning_content:
+            blocks.append(ReasoningBlock(summary=accumulated_reasoning_content))
+        for tc in tool_calls:
+            func_data = tc.get("function", {})
+            blocks.append(
+                ToolCallBlock(
+                    name=func_data.get("name", ""),
+                    args=json.loads(func_data.get("arguments", "{}")),
+                    id=tc.get("id", ""),
+                )
+            )
+        return blocks
 
     async def _handle_stream(
         self,
@@ -467,7 +521,6 @@ class OpenAIConverter(BaseConverter):
         tool_calls = []
         tool_ids = set()
         accumulated_reasoning_content = ""
-        seq = 0
 
         is_awaitable = inspect.isawaitable(stream)
 
@@ -475,43 +528,16 @@ class OpenAIConverter(BaseConverter):
         if is_awaitable:
             stream = await stream
 
-        # Try async iteration
-        try:
-            async for chunk in stream:  # type: ignore
-                accumulated_content, accumulated_reasoning_content, tool_calls, seq, message = (
-                    self._process_chunk(
-                        chunk,
-                        seq,
-                        accumulated_content,
-                        accumulated_reasoning_content,
-                        tool_calls,
-                        tool_ids,
-                    )
-                )
-
-                if message:
-                    yield message
-        except Exception:  # noqa: S110 # nosec B110
-            pass
-
-        # Try sync iteration
-        try:
-            for chunk in stream:
-                accumulated_content, accumulated_reasoning_content, tool_calls, seq, message = (
-                    self._process_chunk(
-                        chunk,
-                        seq,
-                        accumulated_content,
-                        accumulated_reasoning_content,
-                        tool_calls,
-                        tool_ids,
-                    )
-                )
-
-                if message:
-                    yield message
-        except Exception:  # noqa: S110 # nosec B110
-            pass
+        async for chunk in self._iterate_stream_chunks(stream):
+            accumulated_content, accumulated_reasoning_content, message = self._process_chunk(
+                chunk,
+                accumulated_content,
+                accumulated_reasoning_content,
+                tool_calls,
+                tool_ids,
+            )
+            if message:
+                yield message
 
         # After streaming, yield final message
         metadata = meta or {}
@@ -519,32 +545,15 @@ class OpenAIConverter(BaseConverter):
         metadata["node_name"] = node_name
         metadata["thread_id"] = config.get("thread_id")
 
-        # Extract <think>/<thought> tags from accumulated content if no reasoning was
-        # received via the dedicated reasoning_content delta field
-        if not accumulated_reasoning_content and accumulated_content:
-            accumulated_content, think_reasoning = parse_think_tags(accumulated_content)
-            if think_reasoning:
-                accumulated_reasoning_content = think_reasoning
-        if not accumulated_reasoning_content and accumulated_content:
-            accumulated_content, thought_reasoning = parse_thought_tags(accumulated_content)
-            if thought_reasoning:
-                accumulated_reasoning_content = thought_reasoning
-
-        blocks = []
-        if accumulated_content:
-            blocks.append(TextBlock(text=accumulated_content))
-        if accumulated_reasoning_content:
-            blocks.append(ReasoningBlock(summary=accumulated_reasoning_content))
-        if tool_calls:
-            for tc in tool_calls:
-                func_data = tc.get("function", {})
-                blocks.append(
-                    ToolCallBlock(
-                        name=func_data.get("name", ""),
-                        args=json.loads(func_data.get("arguments", "{}")),
-                        id=tc.get("id", ""),
-                    )
-                )
+        accumulated_content, accumulated_reasoning_content = self._extract_stream_reasoning(
+            accumulated_content,
+            accumulated_reasoning_content,
+        )
+        blocks = self._build_stream_blocks(
+            accumulated_content,
+            accumulated_reasoning_content,
+            tool_calls,
+        )
 
         logger.debug(
             "Stream done - Content: %s, Reasoning: %s, Tool Calls: %s",
@@ -591,11 +600,7 @@ class OpenAIConverter(BaseConverter):
             raise ImportError("openai is not installed. Please install it to use this converter.")
 
         # Auto-detect Responses API objects and delegate
-        from .openai_responses_converter import is_responses_api_response
-
         if is_responses_api_response(response):
-            from .openai_responses_converter import OpenAIResponsesConverter
-
             delegate = OpenAIResponsesConverter(state=self.state)
             async for msg in delegate.convert_streaming_response(config, node_name, response, meta):
                 yield msg

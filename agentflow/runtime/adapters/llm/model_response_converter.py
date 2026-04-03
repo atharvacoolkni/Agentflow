@@ -3,11 +3,12 @@ from __future__ import annotations
 import inspect
 import logging
 from collections.abc import AsyncGenerator, Callable
-from typing import Any
-
-from agentflow.core.state.message import Message
+from typing import TYPE_CHECKING, Any
 
 from .base_converter import BaseConverter
+
+if TYPE_CHECKING:
+    from agentflow.core.state.message import Message
 
 
 logger = logging.getLogger("agentflow.adapters")

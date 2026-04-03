@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from agentflow.core.state import AgentState, Message
-from agentflow.runtime.publisher.events import EventModel
+if TYPE_CHECKING:
+    from agentflow.core.state import AgentState, Message
+    from agentflow.runtime.publisher.events import EventModel
 
 
 class ConverterType(str, Enum):
