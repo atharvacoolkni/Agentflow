@@ -11,7 +11,7 @@ from typing import Any
 from agentflow.graph.base_agent import BaseAgent
 from agentflow.graph.tool_node import ToolNode
 from agentflow.media.config import MultimodalConfig
-from agentflow.skills.models import SkillConfig
+from agentflow.graph.skills.models import SkillConfig
 from agentflow.state.message import Message
 
 from .agent_internal.constants import DEFAULT_RETRY_CONFIG, REASONING_DEFAULT, RetryConfig

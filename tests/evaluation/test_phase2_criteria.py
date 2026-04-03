@@ -4,7 +4,7 @@ Tests for the Phase 2 criteria implementations.
 
 import pytest
 
-from agentflow.evaluation import (
+from agentflow.qa.evaluation import (
     CriterionConfig,
     EvalCase,
     Invocation,
@@ -14,13 +14,13 @@ from agentflow.evaluation import (
     TrajectoryStep,
     StepType,
 )
-from agentflow.evaluation.collectors.trajectory_collector import TrajectoryCollector
-from agentflow.evaluation.execution.result import ExecutionResult
-from agentflow.evaluation.criteria.trajectory import (
+from agentflow.qa.evaluation.collectors.trajectory_collector import TrajectoryCollector
+from agentflow.qa.evaluation.execution.result import ExecutionResult
+from agentflow.qa.evaluation.criteria.trajectory import (
     TrajectoryMatchCriterion,
     ToolNameMatchCriterion,
 )
-from agentflow.evaluation.criteria.response import (
+from agentflow.qa.evaluation.criteria.response import (
     RougeMatchCriterion,
     ExactMatchCriterion,
     ContainsKeywordsCriterion,

@@ -11,13 +11,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from agentflow.evaluation.config.eval_config import CriterionConfig, Rubric
-from agentflow.evaluation.criteria.llm_judge import LLMJudgeCriterion
-from agentflow.evaluation.criteria.llm_utils import LLMCallerMixin, _parse_model_provider
-from agentflow.evaluation.criteria.rubric import RubricBasedCriterion
-from agentflow.evaluation.criteria.simulation_goals import SimulationGoalsCriterion
-from agentflow.evaluation.dataset.eval_set import EvalCase, ToolCall
-from agentflow.evaluation.execution.result import ExecutionResult
+from agentflow.qa.evaluation.config.eval_config import CriterionConfig, Rubric
+from agentflow.qa.evaluation.criteria.llm_judge import LLMJudgeCriterion
+from agentflow.qa.evaluation.criteria.llm_utils import LLMCallerMixin, _parse_model_provider
+from agentflow.qa.evaluation.criteria.rubric import RubricBasedCriterion
+from agentflow.qa.evaluation.criteria.simulation_goals import SimulationGoalsCriterion
+from agentflow.qa.evaluation.dataset.eval_set import EvalCase, ToolCall
+from agentflow.qa.evaluation.execution.result import ExecutionResult
 
 
 # ---------------------------------------------------------------------------

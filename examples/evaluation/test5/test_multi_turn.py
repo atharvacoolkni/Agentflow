@@ -22,7 +22,7 @@ pytest.skip(
     allow_module_level=True,
 )
 
-from agentflow.evaluation import (
+from agentflow.qa.evaluation import (
     AgentEvaluator,
     CriterionConfig,
     EvalConfig,
@@ -32,7 +32,7 @@ from agentflow.evaluation import (
     ReporterConfig,
     Rubric,
 )
-from agentflow.evaluation.dataset.eval_set import EvalSet
+from agentflow.qa.evaluation.dataset.eval_set import EvalSet
 
 from .samples import NO_TOOL_CASE, SMALL_EVAL_SET, WEATHER_CASE
 

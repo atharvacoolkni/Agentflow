@@ -201,7 +201,7 @@ class TestGraphFlow:
         """Graph compiles, runs, and returns a messages dict."""
         from agentflow.checkpointer import InMemoryCheckpointer
         from agentflow.graph import StateGraph, ToolNode
-        from agentflow.testing import MockToolRegistry, TestAgent
+        from agentflow.qa.testing import MockToolRegistry, TestAgent
 
         mock_tools = MockToolRegistry()
         mock_tools.register(
@@ -235,7 +235,7 @@ class TestGraphFlow:
     async def test_agent_called_exactly_once_for_simple_query(self):
         """Without tool calls in the response, the agent runs once then ends."""
         from agentflow.graph import StateGraph, ToolNode
-        from agentflow.testing import MockToolRegistry, TestAgent
+        from agentflow.qa.testing import MockToolRegistry, TestAgent
 
         mock_tools = MockToolRegistry()
         mock_tools.register("get_weather", lambda location, **_: f"Sunny in {location}")
@@ -262,7 +262,7 @@ class TestGraphFlow:
     async def test_graph_result_contains_assistant_message(self):
         """The final result must include the agent's response message."""
         from agentflow.graph import StateGraph, ToolNode
-        from agentflow.testing import MockToolRegistry, TestAgent
+        from agentflow.qa.testing import MockToolRegistry, TestAgent
 
         mock_tools = MockToolRegistry()
         mock_tools.register("get_weather", lambda location, **_: f"Sunny in {location}")
@@ -292,7 +292,7 @@ class TestGraphFlow:
     async def test_get_weather_tool_callable_via_tool_node(self):
         """Verify the tool function is correctly registered and callable through ToolNode."""
         from agentflow.graph import ToolNode
-        from agentflow.testing import MockToolRegistry
+        from agentflow.qa.testing import MockToolRegistry
 
         mock_tools = MockToolRegistry()
         mock_tools.register(

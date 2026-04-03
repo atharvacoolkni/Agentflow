@@ -15,7 +15,7 @@ pytest.skip(
     allow_module_level=True,
 )
 
-from agentflow.evaluation import (
+from agentflow.qa.evaluation import (
     BatchSimulator,
     ConversationScenario,
     CriterionConfig,

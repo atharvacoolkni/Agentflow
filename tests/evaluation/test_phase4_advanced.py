@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agentflow.evaluation import (
+from agentflow.qa.evaluation import (
     CriterionConfig,
     CriterionResult,
     EvalCase,
@@ -16,11 +16,11 @@ from agentflow.evaluation import (
     MessageContent,
     TrajectoryCollector,
 )
-from agentflow.evaluation.execution.result import ExecutionResult
-from agentflow.evaluation.criteria.hallucination import HallucinationCriterion
-from agentflow.evaluation.criteria.safety import SafetyCriterion
-from agentflow.evaluation.criteria.factual_accuracy import FactualAccuracyCriterion
-from agentflow.evaluation.simulators.user_simulator import (
+from agentflow.qa.evaluation.execution.result import ExecutionResult
+from agentflow.qa.evaluation.criteria.hallucination import HallucinationCriterion
+from agentflow.qa.evaluation.criteria.safety import SafetyCriterion
+from agentflow.qa.evaluation.criteria.factual_accuracy import FactualAccuracyCriterion
+from agentflow.qa.evaluation.simulators.user_simulator import (
     UserSimulator,
     BatchSimulator,
     ConversationScenario,
@@ -97,7 +97,7 @@ class TestHallucinationCriterion:
         """Test extracting context from tool results."""
         criterion = HallucinationCriterion()
 
-        from agentflow.evaluation import ToolCall
+        from agentflow.qa.evaluation import ToolCall
 
         collector = TrajectoryCollector()
         tc = ToolCall(name="get_info", args={}, result="Paris is the capital")
@@ -282,7 +282,7 @@ class TestUserSimulator:
 
     def test_init_with_config(self):
         """Test simulator initializes from config."""
-        from agentflow.evaluation import UserSimulatorConfig
+        from agentflow.qa.evaluation import UserSimulatorConfig
 
         config = UserSimulatorConfig(
             model="gpt-3.5-turbo",
@@ -498,7 +498,7 @@ class TestTestingUtilities:
 
     def test_create_simple_eval_set(self):
         """Test creating a simple eval set."""
-        from agentflow.evaluation.testing import create_simple_eval_set
+        from agentflow.qa.evaluation.testing import create_simple_eval_set
 
         eval_set = create_simple_eval_set(
             "my_tests",
@@ -514,8 +514,8 @@ class TestTestingUtilities:
 
     def test_assert_eval_passed_success(self):
         """Test assert_eval_passed with passing report."""
-        from agentflow.evaluation.testing import assert_eval_passed
-        from agentflow.evaluation import EvalReport, EvalCaseResult, CriterionResult
+        from agentflow.qa.evaluation.testing import assert_eval_passed
+        from agentflow.qa.evaluation import EvalReport, EvalCaseResult, CriterionResult
 
         report = EvalReport.create(
             eval_set_id="test",
@@ -534,8 +534,8 @@ class TestTestingUtilities:
 
     def test_assert_eval_passed_failure(self):
         """Test assert_eval_passed with failing report."""
-        from agentflow.evaluation.testing import assert_eval_passed
-        from agentflow.evaluation import EvalReport, EvalCaseResult, CriterionResult
+        from agentflow.qa.evaluation.testing import assert_eval_passed
+        from agentflow.qa.evaluation import EvalReport, EvalCaseResult, CriterionResult
 
         report = EvalReport.create(
             eval_set_id="test",
@@ -561,8 +561,8 @@ class TestTestingUtilities:
 
     def test_assert_criterion_passed_success(self):
         """Test assert_criterion_passed with passing criterion."""
-        from agentflow.evaluation.testing import assert_criterion_passed
-        from agentflow.evaluation import EvalReport, EvalCaseResult, CriterionResult
+        from agentflow.qa.evaluation.testing import assert_criterion_passed
+        from agentflow.qa.evaluation import EvalReport, EvalCaseResult, CriterionResult
 
         report = EvalReport.create(
             eval_set_id="test",
@@ -581,8 +581,8 @@ class TestTestingUtilities:
 
     def test_assert_criterion_passed_not_found(self):
         """Test assert_criterion_passed with missing criterion."""
-        from agentflow.evaluation.testing import assert_criterion_passed
-        from agentflow.evaluation import EvalReport
+        from agentflow.qa.evaluation.testing import assert_criterion_passed
+        from agentflow.qa.evaluation import EvalReport
 
         report = EvalReport.create(
             eval_set_id="test",

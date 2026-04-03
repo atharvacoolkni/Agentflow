@@ -9,11 +9,11 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
-from agentflow.evaluation.config.presets import EvalPresets
-from agentflow.evaluation.dataset.builder import EvalSetBuilder
-from agentflow.evaluation.dataset.eval_set import EvalSet
-from agentflow.evaluation.eval_result import EvalReport, EvalSummary
-from agentflow.evaluation.quick_eval import QuickEval
+from agentflow.qa.evaluation.config.presets import EvalPresets
+from agentflow.qa.evaluation.dataset.builder import EvalSetBuilder
+from agentflow.qa.evaluation.dataset.eval_set import EvalSet
+from agentflow.qa.evaluation.eval_result import EvalReport, EvalSummary
+from agentflow.qa.evaluation.quick_eval import QuickEval
 
 
 # ---------------------------------------------------------------------------

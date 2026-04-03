@@ -3,8 +3,8 @@
 import uuid
 import pytest
 
-from agentflow.testing.quick_test import QuickTest
-from agentflow.testing import TestAgent
+from agentflow.qa.testing.quick_test import QuickTest
+from agentflow.qa.testing import TestAgent
 
 
 class TestQuickTestSingleTurn:

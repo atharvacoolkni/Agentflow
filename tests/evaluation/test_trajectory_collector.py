@@ -4,8 +4,8 @@ Tests for the TrajectoryCollector.
 
 import pytest
 
-from agentflow.evaluation import StepType, ToolCall, TrajectoryStep
-from agentflow.evaluation.collectors.trajectory_collector import (
+from agentflow.qa.evaluation import StepType, ToolCall, TrajectoryStep
+from agentflow.qa.evaluation.collectors.trajectory_collector import (
     EventCollector,
     TrajectoryCollector,
 )

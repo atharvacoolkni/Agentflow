@@ -2,7 +2,7 @@
 
 import pytest
 
-from agentflow.testing.mock_tools import MockToolRegistry
+from agentflow.qa.testing.mock_tools import MockToolRegistry
 
 
 class TestMockToolRegistryRegisterAsync:

@@ -3,7 +3,7 @@
 import pytest
 import pytest_asyncio
 
-from agentflow.testing.mock_mcp import MockMCPClient, MockComposioAdapter, MockLangChainAdapter
+from agentflow.qa.testing.mock_mcp import MockMCPClient, MockComposioAdapter, MockLangChainAdapter
 
 
 class TestMockMCPClientInit:

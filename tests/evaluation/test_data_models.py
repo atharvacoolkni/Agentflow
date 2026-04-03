@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from agentflow.evaluation import (
+from agentflow.qa.evaluation import (
     CriterionConfig,
     EvalCase,
     EvalConfig,

@@ -16,15 +16,15 @@ from textwrap import dedent
 import pytest
 from pydantic import ValidationError
 
-from agentflow.skills.activation import make_set_skill_tool
-from agentflow.skills.loader import (
+from agentflow.graph.skills.activation import make_set_skill_tool
+from agentflow.graph.skills.loader import (
     _parse_frontmatter,
     discover_skills,
     load_resource,
     load_skill_content,
 )
-from agentflow.skills.models import SkillConfig, SkillMeta
-from agentflow.skills.registry import SkillsRegistry
+from agentflow.graph.skills.models import SkillConfig, SkillMeta
+from agentflow.graph.skills.registry import SkillsRegistry
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -888,7 +888,7 @@ class TestSetSkillTool:
 class TestAgentSkillsMixin:
     def test_setup_skills_none(self):
         """When skills=None, all skill attributes should be None/empty."""
-        from agentflow.skills.models import SkillConfig as SC
+        from agentflow.graph.skills.models import SkillConfig as SC
         from agentflow.graph.agent_internal.skills import AgentSkillsMixin
 
         mixin = AgentSkillsMixin()

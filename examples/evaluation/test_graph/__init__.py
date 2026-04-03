@@ -94,6 +94,6 @@ def create_app_and_collector():
         tuple[CompiledGraph, TrajectoryCollector]: Ready-to-invoke app and
         the wired collector.
     """
-    from agentflow.evaluation.testing import create_eval_app
+    from agentflow.qa.evaluation.testing import create_eval_app
 
     return create_eval_app(build_weather_graph())
