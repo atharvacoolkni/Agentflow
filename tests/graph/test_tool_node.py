@@ -36,7 +36,7 @@ class TestToolNode:
         mock_client = MagicMock()
 
         # Mock the imports to simulate missing dependencies
-        with patch("agentflow.graph.tool_node.HAS_FASTMCP", False):
+        with patch("agentflow.core.graph.tool_node.base.deps.HAS_FASTMCP", False):
             with pytest.raises(ImportError, match="MCP client functionality requires"):
                 ToolNode([], client=mock_client)
 
@@ -488,8 +488,8 @@ class TestToolNodeMCPUserInfo:
         mock_client.call_tool = AsyncMock(return_value=mock_call_tool_result)
 
         # Patch dependencies to allow MCP client
-        with patch("agentflow.graph.tool_node.HAS_FASTMCP", True):
-            with patch("agentflow.graph.tool_node.HAS_MCP", True):
+        with patch("agentflow.core.graph.tool_node.base.deps.HAS_FASTMCP", True):
+            with patch("agentflow.core.graph.tool_node.base.deps.HAS_MCP", True):
                 tool_node = ToolNode(
                     [sample_func], client=mock_client, pass_user_info_to_mcp=True
                 )
@@ -538,8 +538,8 @@ class TestToolNodeMCPUserInfo:
         mock_client.call_tool = AsyncMock(return_value=mock_call_tool_result)
 
         # Patch dependencies to allow MCP client
-        with patch("agentflow.graph.tool_node.HAS_FASTMCP", True):
-            with patch("agentflow.graph.tool_node.HAS_MCP", True):
+        with patch("agentflow.core.graph.tool_node.base.deps.HAS_FASTMCP", True):
+            with patch("agentflow.core.graph.tool_node.base.deps.HAS_MCP", True):
                 tool_node = ToolNode(
                     [sample_func], client=mock_client, pass_user_info_to_mcp=False
                 )
@@ -589,8 +589,8 @@ class TestToolNodeMCPUserInfo:
         mock_client.call_tool = AsyncMock(return_value=mock_call_tool_result)
 
         # Patch dependencies to allow MCP client
-        with patch("agentflow.graph.tool_node.HAS_FASTMCP", True):
-            with patch("agentflow.graph.tool_node.HAS_MCP", True):
+        with patch("agentflow.core.graph.tool_node.base.deps.HAS_FASTMCP", True):
+            with patch("agentflow.core.graph.tool_node.base.deps.HAS_MCP", True):
                 tool_node = ToolNode(
                     [sample_func], client=mock_client, pass_user_info_to_mcp=True
                 )
@@ -640,8 +640,8 @@ class TestToolNodeMCPUserInfo:
         mock_client.call_tool = AsyncMock(return_value=mock_call_tool_result)
 
         # Patch dependencies to allow MCP client
-        with patch("agentflow.graph.tool_node.HAS_FASTMCP", True):
-            with patch("agentflow.graph.tool_node.HAS_MCP", True):
+        with patch("agentflow.core.graph.tool_node.base.deps.HAS_FASTMCP", True):
+            with patch("agentflow.core.graph.tool_node.base.deps.HAS_MCP", True):
                 tool_node = ToolNode(
                     [sample_func], client=mock_client, pass_user_info_to_mcp=True
                 )

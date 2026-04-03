@@ -48,7 +48,7 @@ def mock_evaluator_class():
     mock_evaluator_instance.evaluate = AsyncMock(return_value=report)
 
     with patch(
-        "agentflow.evaluation.quick_eval.AgentEvaluator",
+        "agentflow.qa.evaluation.quick_eval.AgentEvaluator",
         return_value=mock_evaluator_instance,
     ) as mock_cls:
         mock_cls.return_value = mock_evaluator_instance
@@ -117,7 +117,7 @@ class TestQuickEvalCheck:
     async def test_check_print_results_calls_print(
         self, mock_graph, mock_collector, mock_evaluator_class
     ):
-        with patch("agentflow.evaluation.quick_eval.print_report") as mock_print:
+        with patch("agentflow.qa.evaluation.quick_eval.print_report") as mock_print:
             await QuickEval.check(
                 graph=mock_graph,
                 collector=mock_collector,
@@ -164,7 +164,7 @@ class TestQuickEvalPreset:
     @pytest.mark.asyncio
     async def test_preset_print_results(self, mock_graph, mock_collector, mock_evaluator_class):
         eval_set = EvalSetBuilder.quick(("q", "r"))
-        with patch("agentflow.evaluation.quick_eval.print_report") as mock_print:
+        with patch("agentflow.qa.evaluation.quick_eval.print_report") as mock_print:
             await QuickEval.preset(
                 graph=mock_graph,
                 collector=mock_collector,
@@ -207,7 +207,7 @@ class TestQuickEvalBatch:
 
     @pytest.mark.asyncio
     async def test_batch_print_results(self, mock_graph, mock_collector, mock_evaluator_class):
-        with patch("agentflow.evaluation.quick_eval.print_report") as mock_print:
+        with patch("agentflow.qa.evaluation.quick_eval.print_report") as mock_print:
             await QuickEval.batch(
                 graph=mock_graph,
                 collector=mock_collector,
@@ -317,7 +317,7 @@ class TestQuickEvalRunSync:
         eval_set = EvalSetBuilder.quick(("q", "r"))
 
         with patch(
-            "agentflow.evaluation.quick_eval.AgentEvaluator",
+            "agentflow.qa.evaluation.quick_eval.AgentEvaluator",
             return_value=mock_evaluator_instance,
         ):
             report = QuickEval.run_sync(
@@ -337,10 +337,10 @@ class TestQuickEvalRunSync:
 
         with (
             patch(
-                "agentflow.evaluation.quick_eval.AgentEvaluator",
+                "agentflow.qa.evaluation.quick_eval.AgentEvaluator",
                 return_value=mock_evaluator_instance,
             ),
-            patch("agentflow.evaluation.quick_eval.print_report") as mock_print,
+            patch("agentflow.qa.evaluation.quick_eval.print_report") as mock_print,
         ):
             QuickEval.run_sync(
                 graph=mock_graph,

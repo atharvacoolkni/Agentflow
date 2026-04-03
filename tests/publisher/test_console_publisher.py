@@ -351,7 +351,7 @@ class TestConsolePublisherCloseMethod:
     """Test ConsolePublisher close method."""
     
     @pytest.mark.asyncio
-    @patch('agentflow.publisher.console_publisher.logger')
+    @patch('agentflow.runtime.publisher.console_publisher.logger')
     async def test_close_method(self, mock_logger):
         """Test async close method."""
         publisher = ConsolePublisher()
@@ -362,7 +362,7 @@ class TestConsolePublisherCloseMethod:
         mock_logger.debug.assert_called_once_with("ConsolePublisher closed")
     
     @pytest.mark.asyncio
-    @patch('agentflow.publisher.console_publisher.logger')
+    @patch('agentflow.runtime.publisher.console_publisher.logger')
     async def test_close_method_multiple_calls(self, mock_logger):
         """Test calling close multiple times (idempotent)."""
         publisher = ConsolePublisher()
@@ -376,7 +376,7 @@ class TestConsolePublisherCloseMethod:
         mock_logger.debug.assert_called_once_with("ConsolePublisher closed")
     
     @pytest.mark.asyncio
-    @patch('agentflow.publisher.console_publisher.logger')
+    @patch('agentflow.runtime.publisher.console_publisher.logger')
     async def test_close_method_no_exceptions(self, mock_logger):
         """Test that close method doesn't raise exceptions."""
         publisher = ConsolePublisher()
@@ -393,7 +393,7 @@ class TestConsolePublisherCloseMethod:
 class TestConsolePublisherSyncCloseMethod:
     """Test ConsolePublisher sync_close method."""
     
-    @patch('agentflow.publisher.console_publisher.logger')
+    @patch('agentflow.runtime.publisher.console_publisher.logger')
     def test_sync_close_method(self, mock_logger):
         """Test sync close method."""
         publisher = ConsolePublisher()
@@ -403,7 +403,7 @@ class TestConsolePublisherSyncCloseMethod:
         # Should log debug message
         mock_logger.debug.assert_called_once_with("ConsolePublisher sync closed")
     
-    @patch('agentflow.publisher.console_publisher.logger')
+    @patch('agentflow.runtime.publisher.console_publisher.logger')
     def test_sync_close_method_multiple_calls(self, mock_logger):
         """Test calling sync_close multiple times (idempotent)."""
         publisher = ConsolePublisher()
@@ -416,7 +416,7 @@ class TestConsolePublisherSyncCloseMethod:
         assert mock_logger.debug.call_count == 1
         mock_logger.debug.assert_called_once_with("ConsolePublisher sync closed")
     
-    @patch('agentflow.publisher.console_publisher.logger')
+    @patch('agentflow.runtime.publisher.console_publisher.logger')
     def test_sync_close_method_no_exceptions(self, mock_logger):
         """Test that sync_close method doesn't raise exceptions."""
         publisher = ConsolePublisher()
@@ -474,7 +474,7 @@ class TestConsolePublisherIntegration:
         assert mock_print.call_count == 3
         
         # Close publisher
-        with patch('agentflow.publisher.console_publisher.logger') as mock_logger:
+        with patch('agentflow.runtime.publisher.console_publisher.logger') as mock_logger:
             await publisher.close()
             mock_logger.debug.assert_called_once_with("ConsolePublisher closed")
     

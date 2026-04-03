@@ -128,7 +128,7 @@ class TestRedisPublisher:
         publisher = RedisPublisher()
         
         # Patch the import inside the _get_client method
-        with patch('agentflow.publisher.redis_publisher.importlib.import_module') as mock_import:
+        with patch('agentflow.runtime.publisher.redis_publisher.importlib.import_module') as mock_import:
             mock_import.side_effect = ImportError("No module named 'redis'")
             
             with pytest.raises(RuntimeError, match="RedisPublisher requires the 'redis' package"):
