@@ -73,7 +73,7 @@ class Agent(
         llm_kwargs: Additional provider-specific parameters
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         model: str,
         provider: str | None = None,

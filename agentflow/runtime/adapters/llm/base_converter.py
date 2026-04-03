@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+
 if TYPE_CHECKING:
     from agentflow.core.state import AgentState, Message
     from agentflow.runtime.publisher.events import EventModel
@@ -63,7 +64,7 @@ class BaseConverter(ABC):
         node_name: str,
         response: Any,
         meta: dict | None = None,
-    ) -> AsyncGenerator[EventModel | Message, None]:
+    ) -> AsyncGenerator[EventModel | Message]:
         """
         Convert a streaming agent response to an async generator of EventModel or Message.
 
