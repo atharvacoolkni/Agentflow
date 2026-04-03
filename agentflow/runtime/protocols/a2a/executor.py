@@ -35,7 +35,7 @@ from agentflow.core.state.stream_chunks import StreamEvent
 from agentflow.utils.constants import ResponseGranularity
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agentflow.a2a")
 
 
 class AgentFlowExecutor(AgentExecutor):

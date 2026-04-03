@@ -1,49 +1,42 @@
 """Publisher module for TAF events.
 
-This module provides publishers that handle the delivery of events to various outputs,
-such as console, Redis, Kafka, and RabbitMQ. Publishers are primarily used for
-logging and monitoring agent behavior, enabling real-time tracking of performance,
-usage, and debugging in agent graphs.
-
-Key components:
-- BasePublisher: Abstract base class for all publishers, defining the interface for publishing event
-- ConsolePublisher: Default publisher that outputs events to the console for development
-    and debugging
-- Optional publishers: RedisPublisher, KafkaPublisher, RabbitMQPublisher, which are available
-    only if their dependencies are installed
-
-Usage:
-- Import publishers: from agentflow.publisher import ConsolePublisher, RedisPublisher (if available)
-- Instantiate and use in CompiledGraph: graph.compile(publisher=ConsolePublisher()).
-- Events are emitted as EventModel instances during graph execution, including node starts,
-    completions, and errors.
-
-Dependencies for optional publishers:
-- RedisPublisher: Requires 'redis.asyncio' (install via pip install redis).
-- KafkaPublisher: Requires 'aiokafka' (install via pip install aiokafka).
-- RabbitMQPublisher: Requires 'aio_pika' (install via pip install aio-pika).
-
-For more details, see the individual publisher classes and the TAF documentation.
+This package exposes publishers that handle event delivery to various outputs,
+such as console, Redis, Kafka, and RabbitMQ.
 """
 
-from .base_publisher import BasePublisher
-from .console_publisher import ConsolePublisher
-from .events import ContentType, Event, EventModel, EventType
-from .kafka_publisher import KafkaPublisher
-from .publish import publish_event
-from .rabbitmq_publisher import RabbitMQPublisher
-from .redis_publisher import RedisPublisher
+from __future__ import annotations
+
+import importlib
 
 
-__all__ = [
-    "BasePublisher",
-    "ConsolePublisher",
-    "ContentType",
-    "Event",
-    "EventModel",
-    "EventType",
-    "KafkaPublisher",
-    "RabbitMQPublisher",
-    "RedisPublisher",
-    "publish_event",
-]
+_SYMBOL_EXPORTS = {
+    "BasePublisher": ".base_publisher",
+    "ConsolePublisher": ".console_publisher",
+    "ContentType": ".events",
+    "Event": ".events",
+    "EventModel": ".events",
+    "EventType": ".events",
+    "KafkaPublisher": ".kafka_publisher",
+    "RabbitMQPublisher": ".rabbitmq_publisher",
+    "RedisPublisher": ".redis_publisher",
+    "publish_event": ".publish",
+}
+
+__all__ = list(_SYMBOL_EXPORTS)
+
+
+def __getattr__(name: str):
+    """Lazily load publisher exports so optional dependencies stay optional."""
+    module_name = _SYMBOL_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module = importlib.import_module(module_name, __name__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    """Return the package exports for interactive discovery."""
+    return sorted(__all__)

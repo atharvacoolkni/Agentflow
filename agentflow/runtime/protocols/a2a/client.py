@@ -33,7 +33,7 @@ from agentflow.core.state.agent_state import AgentState
 from agentflow.core.state.message import Message as AFMessage
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agentflow.a2a")
 
 
 # ---------------------------------------------------------------------- #

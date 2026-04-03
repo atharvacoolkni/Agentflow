@@ -43,7 +43,7 @@ from uuid import uuid4
 from .base import BaseMediaStore
 
 
-logger = logging.getLogger("agentflow.media.storage.cloud")
+logger = logging.getLogger("agentflow.storage.media.cloud")
 
 # Extension map for cases where mimetypes doesn't know the type
 _FALLBACK_EXT: dict[str, str] = {

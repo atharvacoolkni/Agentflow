@@ -2,90 +2,71 @@
 
 This package provides the runtime infrastructure for agent execution:
 
-- ``agentflow.runtime.adapters``   — LLM response converters and third-party tool adapters
-- ``agentflow.runtime.publisher``  — event publishers (console, Redis, Kafka, RabbitMQ)
-- ``agentflow.runtime.protocols``  — agent communication protocols (ACP, A2A)
+- ``agentflow.runtime.adapters``   - LLM response converters and third-party tool adapters
+- ``agentflow.runtime.publisher``  - event publishers (console, Redis, Kafka, RabbitMQ)
+- ``agentflow.runtime.protocols``  - agent communication protocols (ACP, A2A)
 """
 
 from __future__ import annotations
 
-from . import adapters, protocols, publisher
-
-# --- Adapters: LLM converters ---
-from .adapters.llm import (
-    BaseConverter,
-    ConverterType,
-    GoogleGenAIConverter,
-    OpenAIConverter,
-    OpenAIResponsesConverter,
-)
-
-# --- Adapters: Tool integrations ---
-from .adapters.tools import (
-    ComposioAdapter,
-    LangChainAdapter,
-)
-
-# --- Publisher ---
-from .publisher import (
-    BasePublisher,
-    ConsolePublisher,
-    ContentType,
-    Event,
-    EventModel,
-    EventType,
-    KafkaPublisher,
-    RabbitMQPublisher,
-    RedisPublisher,
-    publish_event,
-)
+import importlib
 
 
-# --- Protocols: ACP (experimental) ---
-try:
-    from .protocols import (
-        ACPMessage,
-        ACPMessageType,
-        ACPProtocol,
-        MessageContent,
-        MessageContext,
-    )
+_MODULE_EXPORTS = {
+    "adapters": ".adapters",
+    "protocols": ".protocols",
+    "publisher": ".publisher",
+}
 
-    _ACP_EXPORTS = [
-        "ACPMessage",
-        "ACPMessageType",
-        "ACPProtocol",
-        "MessageContent",
-        "MessageContext",
-    ]
-except ImportError:
-    _ACP_EXPORTS = []
-
-_BASE_EXPORTS = [
-    # Submodules
-    "adapters",
-    "protocols",
-    "publisher",
+_SYMBOL_EXPORTS = {
     # Adapters: LLM
-    "BaseConverter",
-    "ConverterType",
-    "GoogleGenAIConverter",
-    "OpenAIConverter",
-    "OpenAIResponsesConverter",
+    "BaseConverter": ".adapters.llm",
+    "ConverterType": ".adapters.llm",
+    "GoogleGenAIConverter": ".adapters.llm",
+    "OpenAIConverter": ".adapters.llm",
+    "OpenAIResponsesConverter": ".adapters.llm",
     # Adapters: Tools
-    "ComposioAdapter",
-    "LangChainAdapter",
+    "ComposioAdapter": ".adapters.tools",
+    "LangChainAdapter": ".adapters.tools",
     # Publisher
-    "BasePublisher",
-    "ConsolePublisher",
-    "ContentType",
-    "Event",
-    "EventModel",
-    "EventType",
-    "KafkaPublisher",
-    "RabbitMQPublisher",
-    "RedisPublisher",
-    "publish_event",
-]
+    "BasePublisher": ".publisher",
+    "ConsolePublisher": ".publisher",
+    "ContentType": ".publisher",
+    "Event": ".publisher",
+    "EventModel": ".publisher",
+    "EventType": ".publisher",
+    "KafkaPublisher": ".publisher",
+    "RabbitMQPublisher": ".publisher",
+    "RedisPublisher": ".publisher",
+    "publish_event": ".publisher",
+    # Protocols: ACP
+    "ACPMessage": ".protocols.acp",
+    "ACPMessageType": ".protocols.acp",
+    "ACPProtocol": ".protocols.acp",
+    "MessageContent": ".protocols.acp",
+    "MessageContext": ".protocols.acp",
+}
 
-__all__ = +_ACP_EXPORTS
+__all__ = [* _MODULE_EXPORTS, * _SYMBOL_EXPORTS]
+
+
+def __getattr__(name: str):
+    """Lazily load runtime exports so optional extras stay optional."""
+    if name in _MODULE_EXPORTS:
+        module = importlib.import_module(_MODULE_EXPORTS[name], __name__)
+        globals()[name] = module
+        return module
+
+    module_name = _SYMBOL_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module = importlib.import_module(module_name, __name__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    """Return the package exports for interactive discovery."""
+    return sorted(__all__)

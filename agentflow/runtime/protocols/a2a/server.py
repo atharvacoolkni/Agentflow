@@ -23,7 +23,7 @@ from a2a.types import (
     AgentSkill,
 )
 
-from agentflow.a2a_integration.executor import AgentFlowExecutor
+from .executor import AgentFlowExecutor
 
 
 if TYPE_CHECKING:
