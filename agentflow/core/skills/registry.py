@@ -11,12 +11,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from agentflow.graph.skills.loader import (
+from .loader import (
     discover_skills,
     load_resource,
     load_skill_content,
 )
-from agentflow.graph.skills.models import SkillMeta
+from .models import SkillMeta
 
 
 logger = logging.getLogger("agentflow.skills.registry")
@@ -188,6 +188,6 @@ class SkillsRegistry:
 
     def build_set_skill_tool(self, hot_reload: bool = True) -> Any:
         """Convenience — delegates to :func:`activation.make_set_skill_tool`."""
-        from agentflow.graph.skills.activation import make_set_skill_tool
+        from .activation import make_set_skill_tool
 
         return make_set_skill_tool(self, hot_reload=hot_reload)

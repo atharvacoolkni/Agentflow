@@ -16,8 +16,8 @@ from agentflow.core.state.message_block import (
 
 
 if TYPE_CHECKING:
-    from agentflow.storage.media.resolver import MediaRefResolver
     from agentflow.core.state import AgentState
+    from agentflow.storage.media.resolver import MediaRefResolver
 
 logger = logging.getLogger("agentflow.utils")
 

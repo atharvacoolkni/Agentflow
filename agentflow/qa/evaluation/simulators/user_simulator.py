@@ -17,9 +17,9 @@ from pydantic import BaseModel, Field
 
 
 if TYPE_CHECKING:
+    from agentflow.core.graph.compiled_graph import CompiledGraph
     from agentflow.qa.evaluation.config.eval_config import UserSimulatorConfig
     from agentflow.qa.evaluation.criteria.base import BaseCriterion
-    from agentflow.core.graph.compiled_graph import CompiledGraph
 
 logger = logging.getLogger("agentflow.evaluation")
 

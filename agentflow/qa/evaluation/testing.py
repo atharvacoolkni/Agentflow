@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:
+    from agentflow.core.graph.compiled_graph import CompiledGraph
     from agentflow.qa.evaluation.config.eval_config import EvalConfig
     from agentflow.qa.evaluation.eval_result import EvalReport
-    from agentflow.core.graph.compiled_graph import CompiledGraph
 
 
 class EvalTestCase:
@@ -362,8 +362,8 @@ def create_eval_app(
             return create_eval_app(graph)
         ```
     """
-    from agentflow.storage.checkpointer import InMemoryCheckpointer
     from agentflow.qa.evaluation.collectors import TrajectoryCollector, make_trajectory_callback
+    from agentflow.storage.checkpointer import InMemoryCheckpointer
 
     collector = TrajectoryCollector(capture_all_events=capture_all_events)
     _, callback_mgr = make_trajectory_callback(collector)

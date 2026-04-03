@@ -3,8 +3,8 @@ from collections.abc import AsyncGenerator
 from enum import Enum
 from typing import Any
 
-from agentflow.runtime.publisher.events import EventModel
 from agentflow.core.state import AgentState, Message
+from agentflow.runtime.publisher.events import EventModel
 
 
 class ConverterType(str, Enum):

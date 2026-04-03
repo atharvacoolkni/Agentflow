@@ -21,7 +21,7 @@ from typing import Any
 
 import yaml
 
-from agentflow.graph.skills.models import SkillMeta
+from .models import SkillMeta
 
 
 logger = logging.getLogger("agentflow.skills.loader")

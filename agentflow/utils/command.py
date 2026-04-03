@@ -13,8 +13,8 @@ from agentflow.core.state.message import Message
 
 if TYPE_CHECKING:
     # Import only for type checking to avoid circular imports at runtime
-    from agentflow.runtime.adapters.llm.base_converter import BaseConverter
     from agentflow.core.state import AgentState
+    from agentflow.runtime.adapters.llm.base_converter import BaseConverter
 
 
 StateT = TypeVar("StateT", bound="AgentState")

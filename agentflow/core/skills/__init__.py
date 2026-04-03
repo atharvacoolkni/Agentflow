@@ -11,8 +11,8 @@ Usage::
     )
 """
 
-from agentflow.graph.skills.models import SkillConfig, SkillMeta
-from agentflow.graph.skills.registry import SkillsRegistry
+from .models import SkillConfig, SkillMeta
+from .registry import SkillsRegistry
 
 
 __all__ = [

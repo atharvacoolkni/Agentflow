@@ -7,9 +7,6 @@ import json
 import logging
 import typing as t
 
-from agentflow.runtime.adapters.tools import ComposioAdapter
-from agentflow.runtime.publisher.events import ContentType, Event, EventModel, EventType
-from agentflow.runtime.publisher.publish import publish_event
 from agentflow.core.state import (
     AgentState,
     ContentBlock,
@@ -18,6 +15,9 @@ from agentflow.core.state import (
     ToolResult,
     ToolResultBlock,
 )
+from agentflow.runtime.adapters.tools import ComposioAdapter
+from agentflow.runtime.publisher.events import ContentType, Event, EventModel, EventType
+from agentflow.runtime.publisher.publish import publish_event
 from agentflow.utils import CallbackContext, CallbackManager, InvocationType, call_sync_or_async
 
 from .constants import INJECTABLE_PARAMS, has_injected_default

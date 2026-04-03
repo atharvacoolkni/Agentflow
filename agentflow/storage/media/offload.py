@@ -22,8 +22,8 @@ from agentflow.core.state.message_block import (
 
 
 if TYPE_CHECKING:
-    from agentflow.storage.media.storage.base import BaseMediaStore
     from agentflow.core.state.message import Message
+    from agentflow.storage.media.storage.base import BaseMediaStore
 
 logger = logging.getLogger("agentflow.media.offload")
 

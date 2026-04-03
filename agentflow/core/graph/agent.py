@@ -10,9 +10,9 @@ from typing import Any
 
 from agentflow.core.graph.base_agent import BaseAgent
 from agentflow.core.graph.tool_node import ToolNode
-from agentflow.storage.media.config import MultimodalConfig
-from agentflow.graph.skills.models import SkillConfig
+from agentflow.core.skills.models import SkillConfig
 from agentflow.core.state.message import Message
+from agentflow.storage.media.config import MultimodalConfig
 
 from .agent_internal.constants import DEFAULT_RETRY_CONFIG, REASONING_DEFAULT, RetryConfig
 from .agent_internal.execution import AgentExecutionMixin
