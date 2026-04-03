@@ -14,8 +14,8 @@ from typing import Any
 import pytest
 from pydantic import Field
 
-from agentflow.graph import CompiledGraph, StateGraph
-from agentflow.state import AgentState, Message
+from agentflow.core.graph import CompiledGraph, StateGraph
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import Command, END, ResponseGranularity, add_messages
 
 

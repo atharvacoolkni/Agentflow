@@ -54,7 +54,7 @@ import re
 from contextlib import suppress
 from typing import Any
 
-from agentflow.state.message import Message
+from agentflow.core.state.message import Message
 from agentflow.utils.callbacks import BaseValidator
 
 

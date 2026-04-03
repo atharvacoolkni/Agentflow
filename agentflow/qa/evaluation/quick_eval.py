@@ -17,7 +17,7 @@ from agentflow.qa.evaluation.reporters.console import print_report
 
 
 if TYPE_CHECKING:
-    from agentflow.graph.compiled_graph import CompiledGraph
+    from agentflow.core.graph.compiled_graph import CompiledGraph
 
 logger = logging.getLogger("agentflow.evaluation")
 

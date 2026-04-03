@@ -110,7 +110,7 @@ class TestContext:
         Returns:
             New StateGraph instance with test container
         """
-        from agentflow.graph import StateGraph
+        from agentflow.core.graph import StateGraph
 
         return StateGraph(state=state, container=self.container)
 

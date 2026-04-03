@@ -9,7 +9,7 @@ from agentflow.qa.evaluation.collectors.trajectory_collector import (
     EventCollector,
     TrajectoryCollector,
 )
-from agentflow.publisher.events import Event, EventModel, EventType
+from agentflow.runtime.publisher.events import Event, EventModel, EventType
 
 
 def create_event(

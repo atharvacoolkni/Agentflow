@@ -19,7 +19,7 @@ from agentflow.utils import (
     replace_messages,
     replace_value,
 )
-from agentflow.state.reducers import append_items
+from agentflow.core.state.reducers import append_items
 from agentflow.utils.background_task_manager import BackgroundTaskManager
 from agentflow.utils.id_generator import (
     AsyncIDGenerator,
@@ -33,8 +33,8 @@ from agentflow.utils.id_generator import (
     UUIDGenerator,
 )
 from agentflow.utils.logging import logger as agentflow_logger
-from agentflow.state.message import Message, TokenUsages, generate_id
-from agentflow.state.message_block import TextBlock, ToolResultBlock
+from agentflow.core.state.message import Message, TokenUsages, generate_id
+from agentflow.core.state.message_block import TextBlock, ToolResultBlock
 
 
 class TestMessage:
@@ -426,7 +426,7 @@ class TestConverter:
 
     def test_convert_messages_with_state_context_summary(self):
         """Test convert_messages with state having context summary."""
-        from agentflow.state import AgentState
+        from agentflow.core.state import AgentState
 
         system_prompts = [{"role": "system", "content": "Test"}]
         state = AgentState()
@@ -438,7 +438,7 @@ class TestConverter:
 
     def test_convert_messages_with_state_context(self):
         """Test convert_messages with state having context messages."""
-        from agentflow.state import AgentState
+        from agentflow.core.state import AgentState
 
         system_prompts = [{"role": "system", "content": "Test"}]
         state = AgentState()
@@ -465,7 +465,7 @@ class TestConverter:
 
     def test_convert_messages_tool_message(self):
         """Test converting tool messages."""
-        from agentflow.state import AgentState
+        from agentflow.core.state import AgentState
 
         system_prompts = [{"role": "system", "content": "Test"}]
         state = AgentState()

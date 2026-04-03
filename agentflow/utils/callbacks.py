@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Union
 
-from agentflow.state.message import Message
+from agentflow.core.state.message import Message
 
 
 logger = logging.getLogger("agentflow.utils")

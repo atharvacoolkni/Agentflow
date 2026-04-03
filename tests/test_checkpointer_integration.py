@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from agentflow.checkpointer import InMemoryCheckpointer
-from agentflow.graph import StateGraph
-from agentflow.state import AgentState, Message
+from agentflow.storage.checkpointer import InMemoryCheckpointer
+from agentflow.core.graph import StateGraph
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import END
 
 
@@ -181,7 +181,7 @@ class TestCheckpointerIntegration:
         thread_id = "test_checkpoint_error_recovery"
 
         # First execution should fail
-        from agentflow.exceptions import NodeError
+        from agentflow.core.exceptions import NodeError
 
         with pytest.raises(NodeError):
             await compiled.ainvoke({"messages": messages}, config={"thread_id": thread_id})

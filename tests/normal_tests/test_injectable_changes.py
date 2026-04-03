@@ -11,8 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 from injectq import inject
 
-from agentflow.graph.tool_node import ToolNode
-from agentflow.state.agent_state import AgentState
+from agentflow.core.graph.tool_node import ToolNode
+from agentflow.core.state.agent_state import AgentState
 from agentflow.utils import Message
 
 

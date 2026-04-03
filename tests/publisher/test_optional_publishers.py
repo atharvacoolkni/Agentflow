@@ -10,8 +10,8 @@ import json
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from typing import Any
 
-from agentflow.publisher.base_publisher import BasePublisher
-from agentflow.publisher.events import EventModel, Event, EventType, ContentType
+from agentflow.runtime.publisher.base_publisher import BasePublisher
+from agentflow.runtime.publisher.events import EventModel, Event, EventType, ContentType
 
 
 class TestRedisPublisher:
@@ -26,7 +26,7 @@ class TestRedisPublisher:
             
             # Import the publisher module with mocked redis
             with patch.dict('sys.modules', {'redis.asyncio': mock_redis_module}):
-                from agentflow.publisher.redis_publisher import RedisPublisher
+                from agentflow.runtime.publisher.redis_publisher import RedisPublisher
                 
                 assert RedisPublisher is not None
                 assert issubclass(RedisPublisher, BasePublisher)
@@ -39,7 +39,7 @@ class TestRedisPublisher:
             
             # Should be able to import the module but may fail at runtime
             try:
-                from agentflow.publisher.redis_publisher import RedisPublisher
+                from agentflow.runtime.publisher.redis_publisher import RedisPublisher
                 # If import succeeds, class should exist
                 assert RedisPublisher is not None
             except ImportError:
@@ -54,7 +54,7 @@ class TestRedisPublisher:
         mock_import.return_value = mock_redis
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             config = {
                 "url": "redis://localhost:6379/1",
@@ -79,7 +79,7 @@ class TestRedisPublisher:
         mock_import.return_value = mock_redis
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             publisher = RedisPublisher()
             
@@ -107,7 +107,7 @@ class TestRedisPublisher:
         mock_import.return_value = mock_redis_asyncio
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis_asyncio}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             publisher = RedisPublisher({"url": "redis://test:6379"})
             
@@ -123,7 +123,7 @@ class TestRedisPublisher:
     @pytest.mark.asyncio
     async def test_redis_publisher_get_client_import_error(self):
         """Test Redis client creation when redis module is missing."""
-        from agentflow.publisher.redis_publisher import RedisPublisher
+        from agentflow.runtime.publisher.redis_publisher import RedisPublisher
         
         publisher = RedisPublisher()
         
@@ -151,7 +151,7 @@ class TestRedisPublisher:
         mock_import.return_value = mock_redis_asyncio
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis_asyncio}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             publisher = RedisPublisher()
             
@@ -176,7 +176,7 @@ class TestRedisPublisher:
         mock_import.return_value = mock_redis_asyncio
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis_asyncio}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             publisher = RedisPublisher({
                 "mode": "pubsub",
@@ -225,7 +225,7 @@ class TestRedisPublisher:
         mock_import.return_value = mock_redis_asyncio
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis_asyncio}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             publisher = RedisPublisher({
                 "mode": "stream",
@@ -276,7 +276,7 @@ class TestRedisPublisher:
         mock_import.return_value = mock_redis_asyncio
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis_asyncio}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             publisher = RedisPublisher()
             
@@ -306,7 +306,7 @@ class TestRedisPublisher:
         mock_import.return_value = mock_redis_asyncio
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis_asyncio}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             publisher = RedisPublisher()
             
@@ -332,7 +332,7 @@ class TestKafkaPublisher:
             mock_import.return_value = mock_kafka_module
             
             with patch.dict('sys.modules', {'aiokafka': mock_kafka_module}):
-                from agentflow.publisher.kafka_publisher import KafkaPublisher
+                from agentflow.runtime.publisher.kafka_publisher import KafkaPublisher
                 
                 assert KafkaPublisher is not None
                 assert issubclass(KafkaPublisher, BasePublisher)
@@ -346,7 +346,7 @@ class TestKafkaPublisher:
         mock_import.return_value = mock_kafka
         
         with patch.dict('sys.modules', {'aiokafka': mock_kafka}):
-            from agentflow.publisher.kafka_publisher import KafkaPublisher
+            from agentflow.runtime.publisher.kafka_publisher import KafkaPublisher
             
             config = {
                 "bootstrap_servers": ["kafka1:9092", "kafka2:9092"],
@@ -372,7 +372,7 @@ class TestKafkaPublisher:
         mock_import.return_value = mock_kafka
         
         with patch.dict('sys.modules', {'aiokafka': mock_kafka}):
-            from agentflow.publisher.kafka_publisher import KafkaPublisher
+            from agentflow.runtime.publisher.kafka_publisher import KafkaPublisher
             
             publisher = KafkaPublisher({
                 "topic": "test.topic"
@@ -422,7 +422,7 @@ class TestRabbitMQPublisher:
             mock_import.return_value = mock_pika_module
             
             with patch.dict('sys.modules', {'aio_pika': mock_pika_module}):
-                from agentflow.publisher.rabbitmq_publisher import RabbitMQPublisher
+                from agentflow.runtime.publisher.rabbitmq_publisher import RabbitMQPublisher
                 
                 assert RabbitMQPublisher is not None
                 assert issubclass(RabbitMQPublisher, BasePublisher)
@@ -434,7 +434,7 @@ class TestRabbitMQPublisher:
         mock_import.return_value = mock_pika
         
         with patch.dict('sys.modules', {'aio_pika': mock_pika}):
-            from agentflow.publisher.rabbitmq_publisher import RabbitMQPublisher
+            from agentflow.runtime.publisher.rabbitmq_publisher import RabbitMQPublisher
             
             config = {
                 "url": "amqp://user:pass@localhost:5672/vhost",
@@ -475,7 +475,7 @@ class TestRabbitMQPublisher:
         mock_import.return_value = mock_pika
         
         with patch.dict('sys.modules', {'aio_pika': mock_pika}):
-            from agentflow.publisher.rabbitmq_publisher import RabbitMQPublisher
+            from agentflow.runtime.publisher.rabbitmq_publisher import RabbitMQPublisher
             
             publisher = RabbitMQPublisher({
                 "exchange": "test.exchange",
@@ -516,7 +516,7 @@ class TestOptionalPublisherErrorHandling:
         mock_import.return_value = mock_redis_asyncio
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis_asyncio}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             publisher = RedisPublisher()
             
@@ -539,7 +539,7 @@ class TestOptionalPublisherErrorHandling:
         mock_import.return_value = mock_kafka
         
         with patch.dict('sys.modules', {'aiokafka': mock_kafka}):
-            from agentflow.publisher.kafka_publisher import KafkaPublisher
+            from agentflow.runtime.publisher.kafka_publisher import KafkaPublisher
             
             publisher = KafkaPublisher()
             
@@ -567,7 +567,7 @@ class TestOptionalPublisherErrorHandling:
         mock_import.return_value = mock_pika
         
         with patch.dict('sys.modules', {'aio_pika': mock_pika}):
-            from agentflow.publisher.rabbitmq_publisher import RabbitMQPublisher
+            from agentflow.runtime.publisher.rabbitmq_publisher import RabbitMQPublisher
             
             publisher = RabbitMQPublisher()
             
@@ -591,7 +591,7 @@ class TestOptionalPublisherConfiguration:
         mock_import.return_value = mock_redis
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             # Test minimal config
             publisher1 = RedisPublisher()
@@ -621,7 +621,7 @@ class TestOptionalPublisherConfiguration:
         mock_import.return_value = mock_kafka
         
         with patch.dict('sys.modules', {'aiokafka': mock_kafka}):
-            from agentflow.publisher.kafka_publisher import KafkaPublisher
+            from agentflow.runtime.publisher.kafka_publisher import KafkaPublisher
             
             # Test with string bootstrap servers
             config1 = {
@@ -649,7 +649,7 @@ class TestOptionalPublisherConfiguration:
         mock_import.return_value = mock_pika
         
         with patch.dict('sys.modules', {'aio_pika': mock_pika}):
-            from agentflow.publisher.rabbitmq_publisher import RabbitMQPublisher
+            from agentflow.runtime.publisher.rabbitmq_publisher import RabbitMQPublisher
             
             # Test default config
             publisher1 = RabbitMQPublisher()
@@ -694,7 +694,7 @@ class TestOptionalPublisherIntegration:
         mock_import.return_value = mock_redis_asyncio
         
         with patch.dict('sys.modules', {'redis.asyncio': mock_redis_asyncio}):
-            from agentflow.publisher.redis_publisher import RedisPublisher
+            from agentflow.runtime.publisher.redis_publisher import RedisPublisher
             
             publisher = RedisPublisher({
                 "channel": "integration.test"
@@ -724,7 +724,7 @@ class TestOptionalPublisherIntegration:
     async def test_multiple_publisher_types_concurrent(self):
         """Test multiple publisher types working concurrently."""
         import asyncio
-        from agentflow.publisher.console_publisher import ConsolePublisher
+        from agentflow.runtime.publisher.console_publisher import ConsolePublisher
         
         # Use ConsolePublisher for this test since it doesn't need external dependencies
         # This tests the concurrency pattern without complex mocking

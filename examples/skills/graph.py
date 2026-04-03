@@ -31,9 +31,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from agentflow.graph import Agent, StateGraph
-from agentflow.state import AgentState, Message
-from agentflow.state.message_context_manager import MessageContextManager
+from agentflow.core.graph import Agent, StateGraph
+from agentflow.core.state import AgentState, Message
+from agentflow.core.state.message_context_manager import MessageContextManager
 from agentflow.graph.skills import SkillConfig
 from agentflow.utils.constants import END
 

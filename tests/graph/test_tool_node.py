@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from injectq import Inject
 
-from agentflow.graph.tool_node import ToolNode
-from agentflow.state import AgentState
-from agentflow.state import ToolResult
+from agentflow.core.graph.tool_node import ToolNode
+from agentflow.core.state import AgentState
+from agentflow.core.state import ToolResult
 from agentflow.utils import CallbackManager
-from agentflow.state.message import Message, ToolResultBlock
+from agentflow.core.state.message import Message, ToolResultBlock
 
 
 class TestToolNode:

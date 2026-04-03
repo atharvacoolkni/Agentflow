@@ -1,15 +1,15 @@
 import base64
 import pytest
 
-from agentflow.state.message import Message
-from agentflow.state.message_block import TextBlock, ContentBlock
+from agentflow.core.state.message import Message
+from agentflow.core.state.message_block import TextBlock, ContentBlock
 from agentflow.utils.validators import (
     MessageContentValidator,
     PromptInjectionValidator,
     ValidationError,
     register_default_validators,
 )
-from agentflow.graph.utils.utils import validate_message_content
+from agentflow.core.graph.utils.utils import validate_message_content
 from agentflow.utils.callbacks import CallbackManager
 
 

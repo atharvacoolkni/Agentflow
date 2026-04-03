@@ -17,7 +17,7 @@ from agentflow.utils.logging import configure_logging
 configure_logging(level=logging.DEBUG)
 
 # Test imports and basic functionality
-from agentflow.graph import StateGraph
+from agentflow.core.graph import StateGraph
 from agentflow.utils import Message
 
 

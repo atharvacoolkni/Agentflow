@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 if TYPE_CHECKING:
     from agentflow.qa.evaluation.config.eval_config import UserSimulatorConfig
     from agentflow.qa.evaluation.criteria.base import BaseCriterion
-    from agentflow.graph.compiled_graph import CompiledGraph
+    from agentflow.core.graph.compiled_graph import CompiledGraph
 
 logger = logging.getLogger("agentflow.evaluation")
 
@@ -206,7 +206,7 @@ class UserSimulator:
         Returns:
             SimulationResult with conversation history, outcomes, and criterion scores.
         """
-        from agentflow.state import Message
+        from agentflow.core.state import Message
 
         conversation: list[dict[str, str]] = []
         goals_achieved: list[str] = []

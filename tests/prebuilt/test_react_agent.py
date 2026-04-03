@@ -3,10 +3,10 @@
 import pytest
 from unittest.mock import Mock, patch
 
-from agentflow.checkpointer import InMemoryCheckpointer
-from agentflow.graph import ToolNode, CompiledGraph
+from agentflow.storage.checkpointer import InMemoryCheckpointer
+from agentflow.core.graph import ToolNode, CompiledGraph
 from agentflow.prebuilt.agent.react import ReactAgent, _should_use_tools
-from agentflow.state import AgentState, Message
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import END
 from agentflow.utils.callbacks import CallbackManager
 

@@ -20,18 +20,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agentflow.checkpointer import InMemoryCheckpointer
-from agentflow.media.config import MultimodalConfig
-from agentflow.media.offload import (
+from agentflow.storage.checkpointer import InMemoryCheckpointer
+from agentflow.storage.media.config import MultimodalConfig
+from agentflow.storage.media.offload import (
     MediaOffloadPolicy,
     ensure_media_offloaded,
 )
-from agentflow.media.resolver import MediaRefResolver
-from agentflow.media.storage.base import BaseMediaStore
-from agentflow.media.storage.local_store import LocalFileMediaStore, _mime_to_ext
-from agentflow.media.storage.memory_store import InMemoryMediaStore
-from agentflow.state.message import Message
-from agentflow.state.message_block import (
+from agentflow.storage.media.resolver import MediaRefResolver
+from agentflow.storage.media.storage.base import BaseMediaStore
+from agentflow.storage.media.storage.local_store import LocalFileMediaStore, _mime_to_ext
+from agentflow.storage.media.storage.memory_store import InMemoryMediaStore
+from agentflow.core.state.message import Message
+from agentflow.core.state.message_block import (
     AudioBlock,
     DocumentBlock,
     ImageBlock,

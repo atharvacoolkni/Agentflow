@@ -6,8 +6,8 @@ Reduces test boilerplate from ~20 lines to ~3 lines with preset test scenarios.
 import logging
 from typing import Any
 
-from agentflow.graph import StateGraph
-from agentflow.state import Message
+from agentflow.core.graph import StateGraph
+from agentflow.core.state import Message
 from agentflow.utils.constants import END
 
 from .test_agent import TestAgent
@@ -173,7 +173,7 @@ class QuickTest:
         Returns:
             TestResult with tool call tracking
         """
-        from agentflow.graph import ToolNode
+        from agentflow.core.graph import ToolNode
 
         # Create mock tools
         tool_funcs = []

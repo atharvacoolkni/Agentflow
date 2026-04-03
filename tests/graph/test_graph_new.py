@@ -4,14 +4,14 @@ from unittest.mock import Mock
 
 import pytest
 
-from agentflow.graph import (
+from agentflow.core.graph import (
     CompiledGraph,
     Edge,
     Node,
     StateGraph,
     ToolNode,
 )
-from agentflow.state import AgentState, Message
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import END
 
 

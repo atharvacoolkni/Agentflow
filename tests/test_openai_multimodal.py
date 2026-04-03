@@ -11,7 +11,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # _to_responses_content (agent_internal/openai.py)
 # ---------------------------------------------------------------------------
-from agentflow.graph.agent_internal.openai import _to_responses_content
+from agentflow.core.graph.agent_internal.openai import _to_responses_content
 
 
 class TestToResponsesContent:
@@ -92,8 +92,8 @@ class TestToResponsesContent:
 # ---------------------------------------------------------------------------
 # OpenAI Responses Converter — multimodal output handling
 # ---------------------------------------------------------------------------
-from agentflow.adapters.llm.openai_responses_converter import OpenAIResponsesConverter
-from agentflow.state.message_block import AudioBlock, ImageBlock, MediaRef
+from agentflow.runtime.adapters.llm.openai_responses_converter import OpenAIResponsesConverter
+from agentflow.core.state.message_block import AudioBlock, ImageBlock, MediaRef
 
 
 class TestResponsesConverterMultimodal:
@@ -331,7 +331,7 @@ class TestResponsesConverterMultimodal:
         )
         msg = await converter.convert_response(response)
         # Should have: ReasoningBlock + TextBlock + ImageBlock + AudioBlock
-        from agentflow.state.message_block import ReasoningBlock, TextBlock
+        from agentflow.core.state.message_block import ReasoningBlock, TextBlock
 
         block_types = [type(b).__name__ for b in msg.content]
         assert "ReasoningBlock" in block_types
@@ -345,7 +345,7 @@ class TestResponsesConverterMultimodal:
 # ---------------------------------------------------------------------------
 # OpenAI converter — ensure response image/audio extraction works
 # ---------------------------------------------------------------------------
-from agentflow.adapters.llm.openai_converter import OpenAIConverter
+from agentflow.runtime.adapters.llm.openai_converter import OpenAIConverter
 
 
 class TestOpenAIConverterMultimodal:
@@ -397,7 +397,7 @@ class TestOpenAIConverterMultimodal:
 # ---------------------------------------------------------------------------
 # Google converter — ensure inline_data / file_data extraction works
 # ---------------------------------------------------------------------------
-from agentflow.adapters.llm.google_genai_converter import GoogleGenAIConverter
+from agentflow.runtime.adapters.llm.google_genai_converter import GoogleGenAIConverter
 
 
 class TestGoogleConverterMultimodal:
@@ -469,8 +469,8 @@ class TestGoogleConverterMultimodal:
 # ---------------------------------------------------------------------------
 # converter.py — multimodal message conversion
 # ---------------------------------------------------------------------------
-from agentflow.state.message import Message
-from agentflow.state.message_block import DocumentBlock, TextBlock
+from agentflow.core.state.message import Message
+from agentflow.core.state.message_block import DocumentBlock, TextBlock
 from agentflow.utils.converter import (
     _build_content,
     _convert_dict,
@@ -548,7 +548,7 @@ class TestConverterMultimodal:
 # ---------------------------------------------------------------------------
 # Google mixin — multimodal message handling
 # ---------------------------------------------------------------------------
-from agentflow.graph.agent_internal.google import AgentGoogleMixin
+from agentflow.core.graph.agent_internal.google import AgentGoogleMixin
 
 
 class TestGoogleMixinMultimodal:

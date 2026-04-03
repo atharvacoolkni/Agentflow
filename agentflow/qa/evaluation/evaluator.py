@@ -47,7 +47,7 @@ from agentflow.qa.evaluation.execution.result import ExecutionResult, NodeRespon
 
 
 if TYPE_CHECKING:
-    from agentflow.graph.compiled_graph import CompiledGraph
+    from agentflow.core.graph.compiled_graph import CompiledGraph
 
 logger = logging.getLogger("agentflow.evaluation")
 
@@ -474,7 +474,7 @@ class AgentEvaluator:
         collector = collector_override or self.collector
 
         try:
-            from agentflow.state import Message
+            from agentflow.core.state import Message
 
             config: dict[str, Any] = {
                 "thread_id": f"eval_{self._run_id}_{case.eval_id}",

@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agentflow.checkpointer.pg_checkpointer import PgCheckpointer
-from agentflow.state import AgentState, Message
+from agentflow.storage.checkpointer.pg_checkpointer import PgCheckpointer
+from agentflow.core.state import AgentState, Message
 from agentflow.utils.thread_info import ThreadInfo
 
 

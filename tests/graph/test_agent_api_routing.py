@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agentflow.graph.agent import Agent
+from agentflow.core.graph.agent import Agent
 
 
 # ---------------------------------------------------------------------------

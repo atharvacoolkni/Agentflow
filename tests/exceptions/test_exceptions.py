@@ -2,7 +2,7 @@
 
 import pytest
 
-from agentflow.exceptions import (
+from agentflow.core.exceptions import (
     GraphError,
     GraphRecursionError,
     MetricsError,

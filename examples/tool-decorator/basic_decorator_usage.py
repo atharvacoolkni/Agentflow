@@ -6,9 +6,9 @@ registering tools with metadata in the agentflow framework.
 
 import asyncio
 
-from agentflow.graph import StateGraph
-from agentflow.graph.tool_node import ToolNode
-from agentflow.state import AgentState
+from agentflow.core.graph import StateGraph
+from agentflow.core.graph.tool_node import ToolNode
+from agentflow.core.state import AgentState
 from agentflow.utils import END, START, get_tool_metadata, has_tool_decorator, tool
 
 

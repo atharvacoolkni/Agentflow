@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from agentflow.adapters.tools.langchain_adapter import LangChainAdapter, LangChainToolWrapper
+from agentflow.runtime.adapters.tools.langchain_adapter import LangChainAdapter, LangChainToolWrapper
 
 
 class MockLangChainTool:

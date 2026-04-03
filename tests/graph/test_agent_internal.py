@@ -18,9 +18,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agentflow.graph.agent import Agent
-from agentflow.graph.tool_node import ToolNode
-from agentflow.state import AgentState, Message
+from agentflow.core.graph.agent import Agent
+from agentflow.core.graph.tool_node import ToolNode
+from agentflow.core.state import AgentState, Message
 
 
 # ─────────────────────────────────────────────────────────────────────────────

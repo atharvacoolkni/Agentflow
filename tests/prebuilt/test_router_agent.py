@@ -3,11 +3,11 @@
 import pytest
 from unittest.mock import Mock
 
-from agentflow.checkpointer import InMemoryCheckpointer
-from agentflow.graph import ToolNode, CompiledGraph
+from agentflow.storage.checkpointer import InMemoryCheckpointer
+from agentflow.core.graph import ToolNode, CompiledGraph
 from agentflow.prebuilt.agent.router import RouterAgent
-from agentflow.state.agent_state import AgentState
-from agentflow.state.message import Message
+from agentflow.core.state.agent_state import AgentState
+from agentflow.core.state.message import Message
 from agentflow.utils import  END
 
 

@@ -15,7 +15,12 @@ Main Exports:
     - Converter (convert_messages)
 """
 
-from agentflow.state.reducers import add_messages, append_items, replace_messages, replace_value
+from agentflow.core.state.reducers import (
+    add_messages,
+    append_items,
+    replace_messages,
+    replace_value,
+)
 
 from .background_task_manager import BackgroundTaskManager, TaskMetadata
 from .callable_utils import call_sync_or_async, run_coroutine

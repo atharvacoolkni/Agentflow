@@ -7,9 +7,9 @@ and message processing rates.
 
 import pytest
 
-from agentflow.checkpointer import InMemoryCheckpointer
-from agentflow.graph import StateGraph
-from agentflow.state import AgentState, Message
+from agentflow.storage.checkpointer import InMemoryCheckpointer
+from agentflow.core.graph import StateGraph
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import END
 
 

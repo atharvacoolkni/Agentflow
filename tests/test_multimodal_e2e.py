@@ -22,8 +22,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agentflow.state.message import Message, TokenUsages, generate_id
-from agentflow.state.message_block import (
+from agentflow.core.state.message import Message, TokenUsages, generate_id
+from agentflow.core.state.message_block import (
     AudioBlock,
     DocumentBlock,
     ImageBlock,
@@ -306,7 +306,7 @@ class TestToResponsesContent:
     """Test OpenAI Responses API content conversion."""
 
     def setup_method(self):
-        from agentflow.graph.agent_internal.openai import _to_responses_content
+        from agentflow.core.graph.agent_internal.openai import _to_responses_content
 
         self.convert = _to_responses_content
 
@@ -379,7 +379,7 @@ class TestContentPartsToGoogle:
         self.mixin = self._create_mixin()
 
     def _create_mixin(self):
-        from agentflow.graph.agent_internal.google import AgentGoogleMixin
+        from agentflow.core.graph.agent_internal.google import AgentGoogleMixin
 
         mixin = AgentGoogleMixin()
         return mixin
@@ -515,7 +515,7 @@ class TestOpenAIChatConverterOutput:
 
     @pytest.fixture
     def converter(self):
-        from agentflow.adapters.llm.openai_converter import OpenAIConverter
+        from agentflow.runtime.adapters.llm.openai_converter import OpenAIConverter
 
         return OpenAIConverter()
 
@@ -632,7 +632,7 @@ class TestOpenAIResponsesConverterOutput:
 
     @pytest.fixture
     def converter(self):
-        from agentflow.adapters.llm.openai_responses_converter import OpenAIResponsesConverter
+        from agentflow.runtime.adapters.llm.openai_responses_converter import OpenAIResponsesConverter
 
         return OpenAIResponsesConverter()
 
@@ -861,7 +861,7 @@ class TestGoogleGenAIConverterOutput:
 
     @pytest.fixture
     def converter(self):
-        from agentflow.adapters.llm.google_genai_converter import GoogleGenAIConverter
+        from agentflow.runtime.adapters.llm.google_genai_converter import GoogleGenAIConverter
 
         return GoogleGenAIConverter()
 
@@ -1082,7 +1082,7 @@ class TestMultiAgentImageStripping:
 
     def test_convert_messages_with_multimodal_context(self):
         """When context has image messages, convert_messages includes them."""
-        from agentflow.state import AgentState
+        from agentflow.core.state import AgentState
 
         state = AgentState(
             context=[
@@ -1103,7 +1103,7 @@ class TestMultiAgentImageStripping:
 
     def test_strip_after_convert(self):
         """strip_media_blocks removes images from converted messages."""
-        from agentflow.state import AgentState
+        from agentflow.core.state import AgentState
 
         state = AgentState(
             context=[
@@ -1126,7 +1126,7 @@ class TestMultiAgentImageStripping:
 
     def test_strip_preserves_system_and_assistant(self):
         """System and assistant text messages are unchanged after stripping."""
-        from agentflow.state import AgentState
+        from agentflow.core.state import AgentState
 
         state = AgentState(
             context=[
@@ -1165,7 +1165,7 @@ class TestGoogleHandleRegularMessage:
     """Test Google mixin _handle_regular_message handles multimodal content."""
 
     def setup_method(self):
-        from agentflow.graph.agent_internal.google import AgentGoogleMixin
+        from agentflow.core.graph.agent_internal.google import AgentGoogleMixin
 
         self.mixin = AgentGoogleMixin()
 
@@ -1217,7 +1217,7 @@ class TestConvertDictEdgeCases:
         assert result["tool_calls"] is not None
 
     def test_tool_message(self):
-        from agentflow.state.message_block import ToolResultBlock
+        from agentflow.core.state.message_block import ToolResultBlock
 
         msg = Message(
             role="tool",
@@ -1251,7 +1251,7 @@ class TestFullPipelineIntegration:
 
     def test_message_to_openai_responses_with_image(self):
         """Message with image → _convert_dict → _to_responses_content."""
-        from agentflow.graph.agent_internal.openai import _to_responses_content
+        from agentflow.core.graph.agent_internal.openai import _to_responses_content
 
         msg = Message(role="user", content=[
             TextBlock(text="Describe"),
@@ -1266,7 +1266,7 @@ class TestFullPipelineIntegration:
 
     def test_message_to_google_with_all_media(self):
         """Message with all media types → _convert_dict → Google parts."""
-        from agentflow.graph.agent_internal.google import AgentGoogleMixin
+        from agentflow.core.graph.agent_internal.google import AgentGoogleMixin
 
         mixin = AgentGoogleMixin()
         msg = Message(role="user", content=[
