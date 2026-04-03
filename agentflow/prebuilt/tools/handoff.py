@@ -8,8 +8,8 @@ that use a naming convention for transparent agent-to-agent transfers.
 import logging
 from collections.abc import Callable
 
-from agentflow.state.message import Message
-from agentflow.state.message_block import TextBlock
+from agentflow.core.state.message import Message
+from agentflow.core.state.message_block import TextBlock
 
 
 logger = logging.getLogger("agentflow.prebuilt")

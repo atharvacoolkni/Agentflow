@@ -6,9 +6,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from agentflow.adapters.llm.google_genai_converter import GoogleGenAIConverter
-from agentflow.state.message import Message
-from agentflow.state.message_block import ReasoningBlock, TextBlock, ToolCallBlock
+from agentflow.runtime.adapters.llm.google_genai_converter import GoogleGenAIConverter
+from agentflow.core.state.message import Message
+from agentflow.core.state.message_block import ReasoningBlock, TextBlock, ToolCallBlock
 
 
 class MockPart:
@@ -205,7 +205,7 @@ class TestGoogleGenAIConverter:
 
         # Assertions
         assert len(message.content) == 1
-        from agentflow.state.message_block import ImageBlock
+        from agentflow.core.state.message_block import ImageBlock
 
         assert isinstance(message.content[0], ImageBlock)
         assert message.content[0].media.data_base64 == "base64_image_data"
@@ -228,7 +228,7 @@ class TestGoogleGenAIConverter:
 
         # Assertions
         assert len(message.content) == 1
-        from agentflow.state.message_block import VideoBlock
+        from agentflow.core.state.message_block import VideoBlock
 
         assert isinstance(message.content[0], VideoBlock)
         assert message.content[0].media.url == "gs://bucket/video.mp4"

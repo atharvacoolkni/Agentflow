@@ -31,23 +31,24 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from agentflow.graph import Agent, StateGraph
-from agentflow.state import AgentState, Message
-from agentflow.state.message_context_manager import MessageContextManager
-from agentflow.skills import SkillConfig
+from agentflow.core.graph import Agent, StateGraph
+from agentflow.core.state import AgentState, Message
+from agentflow.core.state.message_context_manager import MessageContextManager
+from agentflow.graph.skills import SkillConfig
 from agentflow.utils.constants import END
 
 load_dotenv()
+
 
 # ---------------------------------------------------------------------------
 # Custom tool — get_weather (in addition to skills)
 # ---------------------------------------------------------------------------
 def get_weather(location: str) -> str:
     """Get the current weather for a location.
-    
+
     Args:
         location: The city or location to get weather for
-        
+
     Returns:
         A string describing the current weather
     """
@@ -58,7 +59,7 @@ def get_weather(location: str) -> str:
         "tokyo": "Rainy, 18°C",
         "paris": "Partly cloudy, 17°C",
     }
-    
+
     location_lower = location.lower()
     if location_lower in weather_data:
         return f"The weather in {location} is: {weather_data[location_lower]}"
@@ -91,8 +92,8 @@ agent = Agent(
     tools=[get_weather],  # ← Add custom tools here (alongside skills)
     skills=SkillConfig(
         skills_dir=SKILLS_DIR,
-        inject_trigger_table=True,   # auto-appends skill trigger table to system prompt
-        hot_reload=True,             # re-reads SKILL.md on every call (great for dev)
+        inject_trigger_table=True,  # auto-appends skill trigger table to system prompt
+        hot_reload=True,  # re-reads SKILL.md on every call (great for dev)
     ),
     trim_context=True,
 )
@@ -115,6 +116,7 @@ print()
 # Routing
 # ---------------------------------------------------------------------------
 
+
 def should_use_tools(state: AgentState) -> str:
     """Route MAIN → TOOL if there are tool calls, else → END."""
     if not state.context:
@@ -122,17 +124,14 @@ def should_use_tools(state: AgentState) -> str:
 
     last = state.context[-1]
 
-    if (
-        last.role == "assistant"
-        and hasattr(last, "tools_calls")
-        and last.tools_calls
-    ):
+    if last.role == "assistant" and hasattr(last, "tools_calls") and last.tools_calls:
         return "TOOL"
 
     if last.role == "tool":
-        return "MAIN"   # got tool results → back to LLM for final answer
+        return "MAIN"  # got tool results → back to LLM for final answer
 
     return END
+
 
 # ---------------------------------------------------------------------------
 # Graph

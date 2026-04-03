@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agentflow.graph.tool_node import ToolNode
-from agentflow.graph.utils.invoke_node_handler import InvokeNodeHandler
-from agentflow.graph.utils.stream_node_handler import StreamNodeHandler
-from agentflow.state import AgentState, Message
-from agentflow.state.message_block import ToolCallBlock, ToolResultBlock
+from agentflow.core.graph.tool_node import ToolNode
+from agentflow.core.graph.utils.invoke_node_handler import InvokeNodeHandler
+from agentflow.core.graph.utils.stream_node_handler import StreamNodeHandler
+from agentflow.core.state import AgentState, Message
+from agentflow.core.state.message_block import ToolCallBlock, ToolResultBlock
 from agentflow.utils import CallbackManager
 
 
@@ -346,7 +346,7 @@ class TestParallelToolCalls:
     @pytest.mark.asyncio
     async def test_empty_tool_calls_raises_error(self):
         """Test that empty tool calls list raises appropriate error."""
-        from agentflow.exceptions import NodeError
+        from agentflow.core.exceptions import NodeError
 
         tool_node = ToolNode([])
 
@@ -686,7 +686,7 @@ class TestInvokeParallelToolCalls:
     @pytest.mark.asyncio
     async def test_invoke_empty_tool_calls_raises_error(self):
         """Test that empty tool calls list raises appropriate error in invoke mode."""
-        from agentflow.exceptions import NodeError
+        from agentflow.core.exceptions import NodeError
 
         tool_node = ToolNode([])
 

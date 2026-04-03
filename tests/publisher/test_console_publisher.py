@@ -11,9 +11,9 @@ from io import StringIO
 from unittest.mock import patch, Mock, call
 from typing import Any
 
-from agentflow.publisher.console_publisher import ConsolePublisher
-from agentflow.publisher.base_publisher import BasePublisher
-from agentflow.publisher.events import EventModel, Event, EventType, ContentType
+from agentflow.runtime.publisher.console_publisher import ConsolePublisher
+from agentflow.runtime.publisher.base_publisher import BasePublisher
+from agentflow.runtime.publisher.events import EventModel, Event, EventType, ContentType
 
 
 class TestConsolePublisherInheritance:

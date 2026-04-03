@@ -7,14 +7,14 @@ from __future__ import annotations
 
 import pytest
 
-from agentflow.evaluation.config.eval_config import CriterionConfig, MatchType
-from agentflow.evaluation.criteria.trajectory import (
+from agentflow.qa.evaluation.config.eval_config import CriterionConfig, MatchType
+from agentflow.qa.evaluation.criteria.trajectory import (
     NodeOrderMatchCriterion,
     ToolNameMatchCriterion,
     TrajectoryMatchCriterion,
 )
-from agentflow.evaluation.dataset.eval_set import EvalCase, ToolCall
-from agentflow.evaluation.execution.result import ExecutionResult
+from agentflow.qa.evaluation.dataset.eval_set import EvalCase, ToolCall
+from agentflow.qa.evaluation.execution.result import ExecutionResult
 
 
 # ---------------------------------------------------------------------------

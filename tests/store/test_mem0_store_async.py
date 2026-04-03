@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from agentflow.store.mem0_store import Mem0Store
-from agentflow.store.store_schema import MemoryType
-from agentflow.state import Message
+from agentflow.storage.store.mem0_store import Mem0Store
+from agentflow.storage.store.store_schema import MemoryType
+from agentflow.core.state import Message
 
 
 class MockAsyncMem0:

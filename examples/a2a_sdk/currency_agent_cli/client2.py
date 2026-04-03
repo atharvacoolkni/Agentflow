@@ -17,10 +17,10 @@ from __future__ import annotations
 import asyncio
 
 from agentflow.a2a_integration.client import create_a2a_client_node
-from agentflow.checkpointer import InMemoryCheckpointer
-from agentflow.graph import StateGraph
-from agentflow.state import AgentState
-from agentflow.state.message import Message as AFMessage
+from agentflow.storage.checkpointer import InMemoryCheckpointer
+from agentflow.core.graph import StateGraph
+from agentflow.core.state import AgentState
+from agentflow.core.state.message import Message as AFMessage
 from agentflow.utils.constants import END
 
 SERVER_URL = "http://localhost:10000"
@@ -42,7 +42,7 @@ app = graph.compile(checkpointer=checkpointer)
 #  CLI                                                                          #
 # --------------------------------------------------------------------------- #
 
-THREAD_ID = "currency-session-1"   # fixed = persistent history across turns
+THREAD_ID = "currency-session-1"  # fixed = persistent history across turns
 
 
 async def main() -> None:

@@ -1,8 +1,8 @@
 import pytest
-from agentflow.state.message_context_manager import MessageContextManager
-from agentflow.state.agent_state import AgentState
-from agentflow.state.message import Message
-from agentflow.state.message_block import TextBlock, ToolCallBlock, ToolResultBlock
+from agentflow.core.state.message_context_manager import MessageContextManager
+from agentflow.core.state.agent_state import AgentState
+from agentflow.core.state.message import Message
+from agentflow.core.state.message_block import TextBlock, ToolCallBlock, ToolResultBlock
 
 @pytest.fixture
 def system_msg():

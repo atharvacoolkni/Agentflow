@@ -9,8 +9,8 @@ import os
 from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
-from agentflow.store.embedding.base_embedding import BaseEmbedding
-from agentflow.store.embedding.openai_embedding import OpenAIEmbedding
+from agentflow.storage.store.embedding.base_embedding import BaseEmbedding
+from agentflow.storage.store.embedding.openai_embedding import OpenAIEmbedding
 
 
 class MockEmbedding(BaseEmbedding):

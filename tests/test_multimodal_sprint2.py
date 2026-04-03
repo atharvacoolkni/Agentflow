@@ -9,9 +9,9 @@ import io
 
 import pytest
 
-from agentflow.media.config import MultimodalConfig
-from agentflow.media.processor import MediaProcessor, _pil_format
-from agentflow.state.message_block import ImageBlock, MediaRef
+from agentflow.storage.media.config import MultimodalConfig
+from agentflow.storage.media.processor import MediaProcessor, _pil_format
+from agentflow.core.state.message_block import ImageBlock, MediaRef
 
 
 # ---------------------------------------------------------------------------

@@ -7,11 +7,11 @@ invariants in AgentState, reducers, and execution metadata.
 import pytest
 from hypothesis import given, strategies as st
 
-from agentflow.state import AgentState, ExecutionStatus, Message
-from agentflow.state.execution_state import ExecutionState, StopRequestStatus
-from agentflow.state.reducers import add_messages, remove_tool_messages
-from agentflow.state.message import TokenUsages
-from agentflow.state.message_block import TextBlock, ToolCallBlock, ToolResultBlock
+from agentflow.core.state import AgentState, ExecutionStatus, Message
+from agentflow.core.state.execution_state import ExecutionState, StopRequestStatus
+from agentflow.core.state.reducers import add_messages, remove_tool_messages
+from agentflow.core.state.message import TokenUsages
+from agentflow.core.state.message_block import TextBlock, ToolCallBlock, ToolResultBlock
 from agentflow.utils import START, END
 
 

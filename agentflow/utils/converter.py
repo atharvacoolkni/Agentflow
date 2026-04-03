@@ -3,8 +3,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Union
 
-from agentflow.state.message import Message
-from agentflow.state.message_block import (
+from agentflow.core.state.message import Message
+from agentflow.core.state.message_block import (
     AudioBlock,
     DocumentBlock,
     ImageBlock,
@@ -16,8 +16,8 @@ from agentflow.state.message_block import (
 
 
 if TYPE_CHECKING:
-    from agentflow.media.resolver import MediaRefResolver
-    from agentflow.state import AgentState
+    from agentflow.core.state import AgentState
+    from agentflow.storage.media.resolver import MediaRefResolver
 
 logger = logging.getLogger("agentflow.utils")
 

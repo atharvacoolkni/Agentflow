@@ -2,8 +2,8 @@
 
 import pytest
 
-from agentflow.checkpointer import BaseCheckpointer, InMemoryCheckpointer
-from agentflow.state import Message
+from agentflow.storage.checkpointer import BaseCheckpointer, InMemoryCheckpointer
+from agentflow.core.state import Message
 from agentflow.utils.thread_info import ThreadInfo
 
 

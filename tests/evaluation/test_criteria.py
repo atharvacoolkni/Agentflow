@@ -5,7 +5,7 @@ Tests for the evaluation criteria and result models.
 import pytest
 from typing import Any
 
-from agentflow.evaluation import (
+from agentflow.qa.evaluation import (
     CriterionConfig,
     EvalCase,
     EvalConfig,
@@ -15,19 +15,19 @@ from agentflow.evaluation import (
     ToolCall,
     TrajectoryStep,
 )
-from agentflow.evaluation.eval_result import (
+from agentflow.qa.evaluation.eval_result import (
     CriterionResult,
     EvalCaseResult,
     EvalReport,
     EvalSummary,
 )
-from agentflow.evaluation.criteria.base import (
+from agentflow.qa.evaluation.criteria.base import (
     BaseCriterion,
     CompositeCriterion,
     SyncCriterion,
     WeightedCriterion,
 )
-from agentflow.evaluation.collectors.trajectory_collector import TrajectoryCollector
+from agentflow.qa.evaluation.collectors.trajectory_collector import TrajectoryCollector
 
 
 class MockCriterion(BaseCriterion):

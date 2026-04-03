@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agentflow.graph.tool_node import ToolNode
-from agentflow.graph.utils.invoke_node_handler import InvokeNodeHandler
-from agentflow.graph.utils.stream_node_handler import StreamNodeHandler
-from agentflow.state import AgentState, Message, ToolResult
-from agentflow.state.message_block import ToolCallBlock, ToolResultBlock
-from agentflow.state.stream_chunks import StreamChunk
+from agentflow.core.graph.tool_node import ToolNode
+from agentflow.core.graph.utils.invoke_node_handler import InvokeNodeHandler
+from agentflow.core.graph.utils.stream_node_handler import StreamNodeHandler
+from agentflow.core.state import AgentState, Message, ToolResult
+from agentflow.core.state.message_block import ToolCallBlock, ToolResultBlock
+from agentflow.core.state.stream_chunks import StreamChunk
 from agentflow.utils import CallbackManager
 from agentflow.utils.command import Command
 

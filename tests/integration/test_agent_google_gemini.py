@@ -12,8 +12,8 @@ import os
 
 import pytest
 
-from agentflow.graph import Agent, StateGraph, ToolNode
-from agentflow.state import AgentState, Message
+from agentflow.core.graph import Agent, StateGraph, ToolNode
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import END, ResponseGranularity
 
 

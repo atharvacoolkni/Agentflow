@@ -1,11 +1,11 @@
 """Integration tests for TAF framework."""
 
-from agentflow.graph import CompiledGraph, StateGraph, ToolNode
-from agentflow.publisher import ConsolePublisher
-from agentflow.publisher.events import Event, EventModel, EventType
-from agentflow.state import AgentState, Message
+from agentflow.core.graph import CompiledGraph, StateGraph, ToolNode
+from agentflow.runtime.publisher import ConsolePublisher
+from agentflow.runtime.publisher.events import Event, EventModel, EventType
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import END
-from agentflow.state.message import ToolResultBlock
+from agentflow.core.state.message import ToolResultBlock
 
 
 def dummy_ai_agent(state: AgentState) -> dict:
@@ -172,7 +172,7 @@ class TestBasicIntegration:
 
     def test_error_handling_integration(self):
         """Test error handling with custom exceptions."""
-        from agentflow.exceptions import GraphError, NodeError
+        from agentflow.core.exceptions import GraphError, NodeError
 
         # Test exception creation and inheritance
         graph_error = GraphError("Graph failed")
@@ -191,8 +191,8 @@ class TestBasicIntegration:
 def test_framework_import_coverage():
     """Test importing various framework components for coverage."""
     # Import and instantiate various components
-    from agentflow.graph import Edge
-    from agentflow.state import ExecutionState, MessageContextManager
+    from agentflow.core.graph import Edge
+    from agentflow.core.state import ExecutionState, MessageContextManager
     from agentflow.utils import Command, add_messages
 
     # Test Edge creation

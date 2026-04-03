@@ -4,10 +4,10 @@ from typing import Any
 from dotenv import load_dotenv
 from litellm import acompletion
 
-from agentflow.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.checkpointer import InMemoryCheckpointer
-from agentflow.graph import StateGraph
-from agentflow.state import AgentState, Message
+from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
+from agentflow.storage.checkpointer import InMemoryCheckpointer
+from agentflow.core.graph import StateGraph
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import ResponseGranularity
 from agentflow.utils.constants import END
 from agentflow.utils.converter import convert_messages
@@ -188,14 +188,14 @@ def test_partial_state_update():
     print("Returned state keys:", list(updated_state.keys()))
     print("Returned state dict:", updated_state)
     assert "jd" in updated_state, f"Returned state missing 'jd': {updated_state}"
-    assert updated_state["jd"] == partial_update["jd"], (
-        f"JD should be updated, got {updated_state.get('jd')}"
-    )
+    assert (
+        updated_state["jd"] == partial_update["jd"]
+    ), f"JD should be updated, got {updated_state.get('jd')}"
     assert updated_state["candidate_cv"] == old_cv, "CV should remain unchanged"
     assert updated_state["match_score"] == old_score, "Score should remain unchanged"
-    assert updated_state["analysis_results"] == old_analysis, (
-        "Analysis results should remain unchanged"
-    )
+    assert (
+        updated_state["analysis_results"] == old_analysis
+    ), "Analysis results should remain unchanged"
     print("Partial state update test passed!")
     return res
 

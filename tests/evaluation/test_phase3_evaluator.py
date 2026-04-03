@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agentflow.evaluation import (
+from agentflow.qa.evaluation import (
     AgentEvaluator,
     CriterionConfig,
     CriterionResult,
@@ -25,9 +25,9 @@ from agentflow.evaluation import (
     MessageContent,
     TrajectoryCollector,
 )
-from agentflow.evaluation.reporters.console import ConsoleReporter, Colors, print_report
-from agentflow.evaluation.reporters.json import JSONReporter, JUnitXMLReporter
-from agentflow.evaluation.reporters.html import HTMLReporter
+from agentflow.qa.evaluation.reporters.console import ConsoleReporter, Colors, print_report
+from agentflow.qa.evaluation.reporters.json import JSONReporter, JUnitXMLReporter
+from agentflow.qa.evaluation.reporters.html import HTMLReporter
 
 
 # ============================================================================
@@ -135,7 +135,7 @@ class TestAgentEvaluator:
 
     def test_execution_from_collector(self):
         """Test building ExecutionResult from a TrajectoryCollector."""
-        from agentflow.evaluation import ToolCall as EvalToolCall
+        from agentflow.qa.evaluation import ToolCall as EvalToolCall
 
         collector = TrajectoryCollector()
         collector.tool_calls = [

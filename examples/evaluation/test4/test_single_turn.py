@@ -22,7 +22,7 @@ pytest.skip(
     allow_module_level=True,
 )
 
-from agentflow.evaluation import (
+from agentflow.qa.evaluation import (
     AgentEvaluator,
     CriterionConfig,
     EvalConfig,
@@ -33,8 +33,8 @@ from agentflow.evaluation import (
     ReporterConfig,
     assert_eval_passed,
 )
-from agentflow.evaluation.dataset import EvalCase, ToolCall
-from agentflow.evaluation.dataset.eval_set import EvalSet
+from agentflow.qa.evaluation.dataset import EvalCase, ToolCall
+from agentflow.qa.evaluation.dataset.eval_set import EvalSet
 
 from .samples import BATCH_EVAL_SET
 

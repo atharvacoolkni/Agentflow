@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agentflow.graph.tool_node import ToolNode
-from agentflow.state import AgentState, Message
+from agentflow.core.graph.tool_node import ToolNode
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import CallbackManager
 
 

@@ -19,8 +19,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agentflow.graph.agent import Agent
-from agentflow.graph.agent_internal.constants import DEFAULT_RETRY_CONFIG, RetryConfig
+from agentflow.core.graph.agent import Agent
+from agentflow.core.graph.agent_internal.constants import DEFAULT_RETRY_CONFIG, RetryConfig
 
 
 # ---------------------------------------------------------------------------

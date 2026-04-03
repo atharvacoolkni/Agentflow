@@ -2,8 +2,8 @@
 
 import pytest
 
-from agentflow.graph import Agent, StateGraph, ToolNode
-from agentflow.state import AgentState, Message
+from agentflow.core.graph import Agent, StateGraph, ToolNode
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import END
 
 
@@ -134,6 +134,6 @@ class TestAgentIntegration:
 
     def test_agent_export_from_graph_module(self):
         """Test that Agent is properly exported from graph module."""
-        from agentflow.graph import Agent as ExportedAgent
+        from agentflow.core.graph import Agent as ExportedAgent
 
         assert ExportedAgent is Agent

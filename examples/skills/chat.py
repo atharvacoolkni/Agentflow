@@ -16,10 +16,10 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 
-from agentflow.graph import Agent, StateGraph
-from agentflow.skills import SkillConfig
-from agentflow.state import AgentState, Message
-from agentflow.state.message_context_manager import MessageContextManager
+from agentflow.core.graph import Agent, StateGraph
+from agentflow.graph.skills import SkillConfig
+from agentflow.core.state import AgentState, Message
+from agentflow.core.state.message_context_manager import MessageContextManager
 from agentflow.utils.constants import END
 
 load_dotenv()
@@ -29,12 +29,13 @@ SKILLS_DIR = str(Path(__file__).parent / "skills")
 
 # ── Custom Tools ───────────────────────────────────────────────────────────
 
+
 def get_weather(location: str) -> str:
     """Get the current weather for a location.
-    
+
     Args:
         location: The city or location to get weather for
-        
+
     Returns:
         A string describing the current weather
     """
@@ -46,12 +47,13 @@ def get_weather(location: str) -> str:
         "tokyo": "Rainy, 18°C",
         "paris": "Partly cloudy, 17°C",
     }
-    
+
     location_lower = location.lower()
     if location_lower in weather_data:
         return f"The weather in {location} is: {weather_data[location_lower]}"
     else:
         return f"Weather data not available for {location}. Try London, New York, Tokyo, or Paris."
+
 
 # ── Graph setup ────────────────────────────────────────────────────────────
 
@@ -109,6 +111,7 @@ app = graph.compile()
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
+
 def print_banner(thread_id: str) -> None:
     skills = agent._skills_registry.get_all()  # type: ignore[union-attr]
     width = 54
@@ -127,6 +130,7 @@ def print_banner(thread_id: str) -> None:
 
 
 # ── REPL ───────────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     thread_id = f"skills-chat-{uuid4().hex[:8]}"

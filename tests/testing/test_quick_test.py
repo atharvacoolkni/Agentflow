@@ -3,8 +3,8 @@
 import uuid
 import pytest
 
-from agentflow.testing.quick_test import QuickTest
-from agentflow.testing import TestAgent
+from agentflow.qa.testing.quick_test import QuickTest
+from agentflow.qa.testing import TestAgent
 
 
 class TestQuickTestSingleTurn:
@@ -214,21 +214,21 @@ class TestQuickTestExtractResponse:
 
     def test_extract_response_no_assistant(self):
         """Test extract response with no assistant messages."""
-        from agentflow.state import Message
+        from agentflow.core.state import Message
         msg = Message.text_message("Hello", role="user")
         result = QuickTest._extract_response({"messages": [msg]})
         assert result == ""
 
     def test_extract_response_with_assistant(self):
         """Test extract response with assistant message."""
-        from agentflow.state import Message
+        from agentflow.core.state import Message
         msg = Message.text_message("Hello user", role="assistant")
         result = QuickTest._extract_response({"messages": [msg]})
         assert result == "Hello user"
 
     def test_extract_response_last_assistant(self):
         """Test extract response returns last assistant message."""
-        from agentflow.state import Message
+        from agentflow.core.state import Message
         msgs = [
             Message.text_message("user input", role="user"),
             Message.text_message("first response", role="assistant"),

@@ -2,8 +2,8 @@
 
 import pytest
 
-from agentflow.graph import StateGraph
-from agentflow.state import AgentState, ExecutionStatus, Message
+from agentflow.core.graph import StateGraph
+from agentflow.core.state import AgentState, ExecutionStatus, Message
 from agentflow.utils.constants import END
 from agentflow.utils import ResponseGranularity
 

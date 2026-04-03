@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
-from agentflow.adapters.llm.openai_converter import OpenAIConverter
-from agentflow.state.message import Message, TokenUsages
-from agentflow.state.message_block import (
+from agentflow.runtime.adapters.llm.openai_converter import OpenAIConverter
+from agentflow.core.state.message import Message, TokenUsages
+from agentflow.core.state.message_block import (
     AudioBlock,
     ImageBlock,
     ReasoningBlock,

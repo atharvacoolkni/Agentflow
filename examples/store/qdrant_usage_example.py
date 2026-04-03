@@ -10,9 +10,9 @@ import asyncio
 import os
 from typing import Any
 
-from agentflow.state import Message
-from agentflow.store import MemoryType, OpenAIEmbedding, QdrantStore
-from agentflow.store.embedding.base_embedding import BaseEmbedding
+from agentflow.core.state import Message
+from agentflow.storage.store import MemoryType, OpenAIEmbedding, QdrantStore
+from agentflow.storage.store.embedding.base_embedding import BaseEmbedding
 
 
 # Example 1: Simple embedding service for testing
@@ -223,7 +223,7 @@ def remote_qdrant_example():
 
     # This is just configuration - not actually connecting
 
-    from agentflow.store.qdrant_store import create_remote_qdrant_store
+    from agentflow.storage.store.qdrant_store import create_remote_qdrant_store
 
     print("Example configurations for different Qdrant deployments:")
 

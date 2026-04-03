@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from agentflow.checkpointer.in_memory_checkpointer import InMemoryCheckpointer
-from agentflow.state.message import Message
+from agentflow.storage.checkpointer.in_memory_checkpointer import InMemoryCheckpointer
+from agentflow.core.state.message import Message
 from agentflow.utils.thread_info import ThreadInfo
 
 
@@ -38,7 +38,7 @@ def _make_message(mid: str = "msg-1", content: str = "hello") -> Message:
 
 
 def _make_state():
-    from agentflow.state import AgentState
+    from agentflow.core.state import AgentState
 
     return AgentState(messages=[_make_message()])
 

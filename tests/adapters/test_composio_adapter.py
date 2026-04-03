@@ -10,7 +10,7 @@ import logging
 from unittest.mock import Mock, MagicMock, patch
 import pytest
 
-from agentflow.adapters.tools.composio_adapter import ComposioAdapter
+from agentflow.runtime.adapters.tools.composio_adapter import ComposioAdapter
 
 
 class MockComposioSDK:

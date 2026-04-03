@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from agentflow.graph.tool_node import ToolNode
-from agentflow.state import AgentState
+from agentflow.core.graph.tool_node import ToolNode
+from agentflow.core.state import AgentState
 from agentflow.utils.decorators import get_tool_metadata, has_tool_decorator, tool
 
 

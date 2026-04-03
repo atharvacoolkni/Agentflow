@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import Mock, patch
 
-from agentflow.state import AgentState, Message, ToolResultBlock
+from agentflow.core.state import AgentState, Message, ToolResultBlock
 from agentflow.utils.converter import _convert_dict, convert_messages
 
 

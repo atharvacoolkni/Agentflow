@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from agentflow.state.agent_state import AgentState
+from agentflow.core.state.agent_state import AgentState
 
 
 @dataclass

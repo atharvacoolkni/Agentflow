@@ -2,14 +2,14 @@
 
 import pytest
 
-from agentflow.graph import (
+from agentflow.core.graph import (
     CompiledGraph,
     Edge,
     Node,
     StateGraph,
     ToolNode,
 )
-from agentflow.state import AgentState, Message
+from agentflow.core.state import AgentState, Message
 from agentflow.utils import END
 
 
@@ -132,7 +132,7 @@ class TestStateGraph:
 
     def test_state_graph_creation_with_publisher(self):
         """Test creating a StateGraph with publisher."""
-        from agentflow.publisher import ConsolePublisher
+        from agentflow.runtime.publisher import ConsolePublisher
 
         publisher = ConsolePublisher()
         graph = StateGraph[AgentState](AgentState(), publisher=publisher)

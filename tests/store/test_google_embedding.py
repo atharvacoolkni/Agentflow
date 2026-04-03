@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from agentflow.store.embedding.google_embedding import GoogleEmbedding
+from agentflow.storage.store.embedding.google_embedding import GoogleEmbedding
 
 
 class TestGoogleEmbeddingAvailability:

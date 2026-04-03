@@ -1,6 +1,6 @@
 """Tests for the state module."""
 
-from agentflow.state import (
+from agentflow.core.state import (
     AgentState,
     BaseContextManager,
     ExecutionState,
@@ -8,7 +8,7 @@ from agentflow.state import (
     MessageContextManager,
 )
 from agentflow.utils import START
-from agentflow.state.message import Message
+from agentflow.core.state.message import Message
 
 
 class TestAgentState:

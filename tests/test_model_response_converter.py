@@ -5,9 +5,9 @@ import asyncio
 import inspect
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
-from agentflow.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.adapters.llm.base_converter import BaseConverter
-from agentflow.state.message import Message
+from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
+from agentflow.runtime.adapters.llm.base_converter import BaseConverter
+from agentflow.core.state.message import Message
 
 
 class TestModelResponseConverter:

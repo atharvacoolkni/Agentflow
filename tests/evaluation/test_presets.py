@@ -2,8 +2,8 @@
 
 import pytest
 
-from agentflow.evaluation.config.presets import EvalPresets
-from agentflow.evaluation.config.eval_config import EvalConfig, MatchType
+from agentflow.qa.evaluation.config.presets import EvalPresets
+from agentflow.qa.evaluation.config.eval_config import EvalConfig, MatchType
 
 
 class TestEvalPresetsResponseQuality:

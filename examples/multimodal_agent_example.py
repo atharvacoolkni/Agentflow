@@ -10,8 +10,8 @@ enabling complex multi-modal workflows following the Google ADK pattern.
 import asyncio
 import logging
 
-from agentflow.graph import Agent, StateGraph
-from agentflow.state import AgentState
+from agentflow.core.graph import Agent, StateGraph
+from agentflow.core.state import AgentState
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -115,9 +115,7 @@ async def example_3_google_full_multimodal():
         model="gemini-2.0-flash-exp",
         provider="google",
         output_type="text",
-        system_prompt=[
-            {"role": "system", "content": "Generate creative content descriptions."}
-        ],
+        system_prompt=[{"role": "system", "content": "Generate creative content descriptions."}],
     )
 
     # Agent 2: Image generation
@@ -272,4 +270,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

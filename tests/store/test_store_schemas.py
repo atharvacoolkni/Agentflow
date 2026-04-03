@@ -10,14 +10,14 @@ from unittest.mock import Mock
 from uuid import UUID
 import pytest
 
-from agentflow.store.store_schema import (
+from agentflow.storage.store.store_schema import (
     DistanceMetric,
     MemoryType,
     RetrievalStrategy,
     MemoryRecord,
     MemorySearchResult,
 )
-from agentflow.state import Message, TextBlock
+from agentflow.core.state import Message, TextBlock
 
 
 class TestEnums:

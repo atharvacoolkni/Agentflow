@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agentflow.state.message import generate_id
+from agentflow.core.state.message import generate_id
 
 
 def _mock_iq(id_type: str = "string", generated_id=None) -> MagicMock:

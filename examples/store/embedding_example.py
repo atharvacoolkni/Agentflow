@@ -2,8 +2,8 @@
 
 import asyncio
 
-from agentflow.store import GoogleEmbedding, OpenAIEmbedding, QdrantStore
-from agentflow.store.store_schema import MemoryType
+from agentflow.storage.store import GoogleEmbedding, OpenAIEmbedding, QdrantStore
+from agentflow.storage.store.store_schema import MemoryType
 
 
 async def example_openai_embedding():
@@ -67,7 +67,7 @@ async def example_custom_dimensions():
     # Create Google embedding with custom dimensions
     embedding = GoogleEmbedding(
         model="text-embedding-004",
-        output_dimensionality=256  # Custom dimension
+        output_dimensionality=256,  # Custom dimension
     )
 
     store = QdrantStore(
@@ -145,10 +145,7 @@ async def example_different_models():
     print(f"✓ Google default: {google_default.dimension} dims")
 
     # Google - Custom dimensions
-    google_custom = GoogleEmbedding(
-        model="text-embedding-004",
-        output_dimensionality=512
-    )
+    google_custom = GoogleEmbedding(model="text-embedding-004", output_dimensionality=512)
     print(f"✓ Google custom: {google_custom.dimension} dims")
 
     print()

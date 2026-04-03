@@ -30,7 +30,7 @@ except Exception:  # pragma: no cover - optional dependency
     completion = None  # type: ignore
 
 from agentflow.prebuilt.agent.rag import RAGAgent
-from agentflow.state import AgentState, Message
+from agentflow.core.state import AgentState, Message
 from agentflow.utils.constants import END
 
 
@@ -167,9 +167,7 @@ def run_sync_demo() -> None:
     )
 
     initial_input = {
-        "messages": [
-            Message.text_message("Explain how RAG systems work with TAF.", role="user")
-        ]
+        "messages": [Message.text_message("Explain how RAG systems work with TAF.", role="user")]
     }
 
     result = compiled.invoke(initial_input, config={"thread_id": "basic-rag-demo"})

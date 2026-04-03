@@ -16,15 +16,15 @@ from textwrap import dedent
 import pytest
 from pydantic import ValidationError
 
-from agentflow.skills.activation import make_set_skill_tool
-from agentflow.skills.loader import (
+from agentflow.graph.skills.activation import make_set_skill_tool
+from agentflow.graph.skills.loader import (
     _parse_frontmatter,
     discover_skills,
     load_resource,
     load_skill_content,
 )
-from agentflow.skills.models import SkillConfig, SkillMeta
-from agentflow.skills.registry import SkillsRegistry
+from agentflow.graph.skills.models import SkillConfig, SkillMeta
+from agentflow.graph.skills.registry import SkillsRegistry
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -888,8 +888,8 @@ class TestSetSkillTool:
 class TestAgentSkillsMixin:
     def test_setup_skills_none(self):
         """When skills=None, all skill attributes should be None/empty."""
-        from agentflow.skills.models import SkillConfig as SC
-        from agentflow.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.graph.skills.models import SkillConfig as SC
+        from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
 
         mixin = AgentSkillsMixin()
         mixin._tool_node = None
@@ -900,7 +900,7 @@ class TestAgentSkillsMixin:
         assert mixin._trigger_table_prompt is None
 
     def test_setup_skills_invalid_type_raises(self):
-        from agentflow.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
 
         mixin = AgentSkillsMixin()
         mixin._tool_node = None
@@ -908,7 +908,7 @@ class TestAgentSkillsMixin:
             mixin._setup_skills("not-a-config")
 
     def test_setup_skills_creates_registry(self, tmp_path: Path):
-        from agentflow.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
 
         _make_skill_dir(tmp_path, "alpha")
         _make_skill_dir(tmp_path, "beta")
@@ -923,8 +923,8 @@ class TestAgentSkillsMixin:
         assert mixin._tool_node is not None
 
     def test_setup_skills_adds_tool_to_existing_toolnode(self, tmp_path: Path):
-        from agentflow.graph.agent_internal.skills import AgentSkillsMixin
-        from agentflow.graph.tool_node import ToolNode
+        from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.tool_node import ToolNode
 
         def dummy_tool():
             """A dummy tool."""
@@ -940,7 +940,7 @@ class TestAgentSkillsMixin:
         assert mixin._tool_node is not None
 
     def test_build_skill_prompts_no_skills(self):
-        from agentflow.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
 
         mixin = AgentSkillsMixin()
         mixin._tool_node = None
@@ -951,7 +951,7 @@ class TestAgentSkillsMixin:
         assert result == base
 
     def test_build_skill_prompts_appends_trigger_table(self, tmp_path: Path):
-        from agentflow.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
 
         _make_skill_dir(tmp_path, "review", triggers=["review code"])
 
@@ -968,7 +968,7 @@ class TestAgentSkillsMixin:
         assert "review" in result[1]["content"]
 
     def test_build_skill_prompts_no_trigger_table_when_disabled(self, tmp_path: Path):
-        from agentflow.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
 
         _make_skill_dir(tmp_path, "review")
 
@@ -981,7 +981,7 @@ class TestAgentSkillsMixin:
         assert len(result) == 1
 
     def test_build_skill_prompts_does_not_mutate_original(self, tmp_path: Path):
-        from agentflow.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
 
         _make_skill_dir(tmp_path, "review")
 

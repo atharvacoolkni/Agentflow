@@ -10,7 +10,7 @@ try:
     # Import from same directory
     from full_validation_example import BusinessPolicyValidator
 
-    from agentflow.state import Message
+    from agentflow.core.state import Message
     from agentflow.utils.validators import ValidationError
 
     print("✓ All imports successful")

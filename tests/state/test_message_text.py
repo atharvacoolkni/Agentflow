@@ -1,5 +1,5 @@
-from agentflow.state.message import Message
-from agentflow.state.message_block import TextBlock
+from agentflow.core.state.message import Message
+from agentflow.core.state.message_block import TextBlock
 
 
 def test_text_extracts_from_mixed_block_shapes():

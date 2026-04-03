@@ -2,10 +2,10 @@
 
 import pytest
 
-from agentflow.graph import StateGraph, ToolNode
+from agentflow.core.graph import StateGraph, ToolNode
 from agentflow.prebuilt.tools import create_handoff_tool, is_handoff_tool
-from agentflow.state import AgentState, Message
-from agentflow.state.message_block import TextBlock
+from agentflow.core.state import AgentState, Message
+from agentflow.core.state.message_block import TextBlock
 from agentflow.utils.constants import END
 
 

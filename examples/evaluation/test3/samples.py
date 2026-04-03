@@ -5,8 +5,8 @@ Part A: Multi-turn EvalCases (from old test5)
 Part B: Simulator ConversationScenarios (from old test3 + test7)
 """
 
-from agentflow.evaluation import ConversationScenario
-from agentflow.evaluation.dataset import EvalCase, ToolCall
+from agentflow.qa.evaluation import ConversationScenario
+from agentflow.qa.evaluation.dataset import EvalCase, ToolCall
 
 
 # ═══════════════════════════════════════════════════════════════════════
