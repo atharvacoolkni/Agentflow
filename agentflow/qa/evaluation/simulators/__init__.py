@@ -14,8 +14,8 @@ from agentflow.qa.evaluation.simulators.user_simulator import (
 
 
 __all__ = [
-    "UserSimulator",
     "BatchSimulator",
     "ConversationScenario",
     "SimulationResult",
+    "UserSimulator",
 ]

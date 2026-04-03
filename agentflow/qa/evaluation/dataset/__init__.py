@@ -45,15 +45,15 @@ from .eval_set import (
 
 
 __all__ = [
+    "EvalCase",
     # Core models
     "EvalSet",
-    "EvalCase",
+    # Builder
+    "EvalSetBuilder",
     "Invocation",
     "MessageContent",
     "SessionInput",
+    "StepType",
     "ToolCall",
     "TrajectoryStep",
-    "StepType",
-    # Builder
-    "EvalSetBuilder",
 ]

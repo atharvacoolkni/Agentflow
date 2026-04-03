@@ -38,12 +38,12 @@ except ImportError as _exc:
         "Install it with:  pip install agentflow[a2a_sdk]"
     ) from _exc
 
-from agentflow.a2a_integration.client import (
+from .client import (
     create_a2a_client_node,
     delegate_to_a2a_agent,
 )
-from agentflow.a2a_integration.executor import AgentFlowExecutor
-from agentflow.a2a_integration.server import (
+from .executor import AgentFlowExecutor
+from .server import (
     build_a2a_app,
     create_a2a_server,
     make_agent_card,

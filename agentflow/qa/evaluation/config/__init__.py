@@ -34,14 +34,14 @@ from .presets import EvalPresets
 
 
 __all__ = [
+    "DEFAULT_JUDGE_MODEL",
+    "CriterionConfig",
     # Core config models
     "EvalConfig",
-    "CriterionConfig",
-    "MatchType",
-    "Rubric",
-    "UserSimulatorConfig",
-    "ReporterConfig",
     # Presets
     "EvalPresets",
-    "DEFAULT_JUDGE_MODEL",
+    "MatchType",
+    "ReporterConfig",
+    "Rubric",
+    "UserSimulatorConfig",
 ]

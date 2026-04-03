@@ -18,16 +18,16 @@ if TYPE_CHECKING:
     from .tools import create_handoff_tool, is_handoff_tool
 
 __all__ = [
-    # Submodules
-    "agent",
-    "tools",
     # Agents
     "RAGAgent",
     "ReactAgent",
     "RouterAgent",
+    # Submodules
+    "agent",
     # Tools
     "create_handoff_tool",
     "is_handoff_tool",
+    "tools",
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str | None]] = {

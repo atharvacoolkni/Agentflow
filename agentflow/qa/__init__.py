@@ -104,102 +104,102 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    # Submodules
-    "evaluation",
-    "testing",
+    # --- Evaluation: Runner ---
+    "AgentEvaluator",
+    # --- Evaluation: Criteria (base) ---
+    "BaseCriterion",
+    # --- Evaluation: Simulators ---
+    "BatchSimulator",
+    # --- Evaluation: Reporters ---
+    "Colors",
+    "CompositeCriterion",
+    "ConsoleReporter",
+    # --- Evaluation: Criteria (response) ---
+    "ContainsKeywordsCriterion",
+    "ConversationScenario",
+    # --- Evaluation: Config ---
+    "CriterionConfig",
+    # --- Evaluation: Results ---
+    "CriterionResult",
+    # --- Evaluation: Dataset ---
+    "EvalCase",
+    "EvalCaseResult",
+    "EvalConfig",
+    # --- Evaluation: Testing helpers ---
+    "EvalFixtures",
+    "EvalPlugin",
+    "EvalPresets",
+    "EvalReport",
+    "EvalSet",
+    "EvalSetBuilder",
+    "EvalSummary",
+    "EvalTestCase",
+    "EvaluationRunner",
+    # --- Evaluation: Collectors ---
+    "EventCollector",
+    "ExactMatchCriterion",
+    # --- Evaluation: Execution ---
+    "ExecutionResult",
+    # --- Evaluation: Criteria (advanced) ---
+    "FactualAccuracyCriterion",
+    "HTMLReporter",
+    "HallucinationCriterion",
     # --- Testing ---
     "InMemoryStore",
+    "Invocation",
+    "JSONReporter",
+    "JUnitXMLReporter",
+    "LLMCallerMixin",
+    # --- Evaluation: Criteria (LLM-as-judge) ---
+    "LLMJudgeCriterion",
+    "MatchType",
+    "MessageContent",
     "MockComposioAdapter",
     "MockLangChainAdapter",
     "MockMCPClient",
     "MockToolRegistry",
+    # --- Evaluation: Criteria (trajectory) ---
+    "NodeOrderMatchCriterion",
+    "NodeResponseData",
+    "PublisherCallback",
+    "QuickEval",
     "QuickTest",
+    "ReporterConfig",
+    "ReporterManager",
+    "ReporterOutput",
+    "ResponseMatchCriterion",
+    "RougeMatchCriterion",
+    "Rubric",
+    "RubricBasedCriterion",
+    "SafetyCriterion",
+    "SessionInput",
+    "SimulationGoalsCriterion",
+    "SimulationResult",
+    "StepType",
+    "SyncCriterion",
     "TestAgent",
     "TestContext",
     "TestResult",
-    # --- Evaluation: Dataset ---
-    "EvalCase",
-    "EvalSet",
-    "EvalSetBuilder",
-    "Invocation",
-    "MessageContent",
-    "SessionInput",
-    "StepType",
     "ToolCall",
-    "TrajectoryStep",
-    # --- Evaluation: Execution ---
-    "ExecutionResult",
-    "NodeResponseData",
-    # --- Evaluation: Collectors ---
-    "EventCollector",
-    "PublisherCallback",
-    "TrajectoryCollector",
-    "make_trajectory_callback",
-    # --- Evaluation: Criteria (base) ---
-    "BaseCriterion",
-    "CompositeCriterion",
-    "LLMCallerMixin",
-    "SyncCriterion",
-    "WeightedCriterion",
-    # --- Evaluation: Criteria (trajectory) ---
-    "NodeOrderMatchCriterion",
     "ToolNameMatchCriterion",
+    "TrajectoryCollector",
     "TrajectoryMatchCriterion",
-    # --- Evaluation: Criteria (response) ---
-    "ContainsKeywordsCriterion",
-    "ExactMatchCriterion",
-    "ResponseMatchCriterion",
-    "RougeMatchCriterion",
-    # --- Evaluation: Criteria (LLM-as-judge) ---
-    "LLMJudgeCriterion",
-    "RubricBasedCriterion",
-    "SimulationGoalsCriterion",
-    # --- Evaluation: Criteria (advanced) ---
-    "FactualAccuracyCriterion",
-    "HallucinationCriterion",
-    "SafetyCriterion",
-    # --- Evaluation: Config ---
-    "CriterionConfig",
-    "EvalConfig",
-    "EvalPresets",
-    "MatchType",
-    "ReporterConfig",
-    "Rubric",
-    "UserSimulatorConfig",
-    # --- Evaluation: Results ---
-    "CriterionResult",
-    "EvalCaseResult",
-    "EvalReport",
-    "EvalSummary",
-    # --- Evaluation: Reporters ---
-    "Colors",
-    "ConsoleReporter",
-    "HTMLReporter",
-    "JSONReporter",
-    "JUnitXMLReporter",
-    "ReporterManager",
-    "ReporterOutput",
-    "print_report",
-    # --- Evaluation: Runner ---
-    "AgentEvaluator",
-    "EvaluationRunner",
-    "QuickEval",
-    # --- Evaluation: Simulators ---
-    "BatchSimulator",
-    "ConversationScenario",
-    "SimulationResult",
+    "TrajectoryStep",
     "UserSimulator",
-    # --- Evaluation: Testing helpers ---
-    "EvalFixtures",
-    "EvalPlugin",
-    "EvalTestCase",
+    "UserSimulatorConfig",
+    "WeightedCriterion",
     "assert_criterion_passed",
     "assert_eval_passed",
     "create_eval_app",
     "create_simple_eval_set",
     "eval_test",
+    # Submodules
+    "evaluation",
+    "make_trajectory_callback",
     "parametrize_eval_cases",
+    "print_report",
     "run_eval",
+    "testing",
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str | None]] = {

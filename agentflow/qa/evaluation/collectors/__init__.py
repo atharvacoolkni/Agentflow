@@ -30,8 +30,8 @@ from .trajectory_collector import (
 
 
 __all__ = [
-    "TrajectoryCollector",
     "EventCollector",
     "PublisherCallback",
+    "TrajectoryCollector",
     "make_trajectory_callback",
 ]

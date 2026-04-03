@@ -32,16 +32,16 @@ from agentflow.qa.evaluation.reporters.manager import (
 __all__ = [
     # Base
     "BaseReporter",
+    "Colors",
     # Console
     "ConsoleReporter",
-    "Colors",
-    "print_report",
+    # HTML
+    "HTMLReporter",
     # JSON
     "JSONReporter",
     "JUnitXMLReporter",
-    # HTML
-    "HTMLReporter",
     # Manager
     "ReporterManager",
     "ReporterOutput",
+    "print_report",
 ]

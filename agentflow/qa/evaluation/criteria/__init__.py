@@ -44,24 +44,24 @@ from .trajectory import NodeOrderMatchCriterion, ToolNameMatchCriterion, Traject
 __all__ = [
     # Base classes
     "BaseCriterion",
-    "SyncCriterion",
     "CompositeCriterion",
-    "WeightedCriterion",
+    "ContainsKeywordsCriterion",
+    "ExactMatchCriterion",
+    "FactualAccuracyCriterion",
+    "HallucinationCriterion",
     "LLMCallerMixin",
-    # Trajectory
-    "TrajectoryMatchCriterion",
+    "LLMJudgeCriterion",
     "NodeOrderMatchCriterion",
-    "ToolNameMatchCriterion",
     # Response
     "ResponseMatchCriterion",
     "RougeMatchCriterion",
-    "ExactMatchCriterion",
-    "ContainsKeywordsCriterion",
+    "RubricBasedCriterion",
+    "SafetyCriterion",
     # LLM-based
     "SimulationGoalsCriterion",
-    "LLMJudgeCriterion",
-    "RubricBasedCriterion",
-    "HallucinationCriterion",
-    "SafetyCriterion",
-    "FactualAccuracyCriterion",
+    "SyncCriterion",
+    "ToolNameMatchCriterion",
+    # Trajectory
+    "TrajectoryMatchCriterion",
+    "WeightedCriterion",
 ]
