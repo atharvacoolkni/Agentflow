@@ -2,15 +2,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dotenv import load_dotenv
-from litellm import acompletion
 
-from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.storage.checkpointer import InMemoryCheckpointer
-from agentflow.core.graph import StateGraph
+from agentflow.core import Agent, StateGraph
 from agentflow.core.state import AgentState, Message
+from agentflow.storage.checkpointer import InMemoryCheckpointer
 from agentflow.utils import ResponseGranularity
 from agentflow.utils.constants import END
-from agentflow.utils.converter import convert_messages
 
 
 load_dotenv()
@@ -30,40 +27,23 @@ class MyState(AgentState):
 checkpointer = InMemoryCheckpointer[MyState]()
 
 
-async def main_agent(
-    state: MyState,
-    config: dict[str, Any],
-    checkpointer: Any | None = None,
-    store: Any | None = None,
-):
-    """Main agent that processes CV and job description."""
-    prompts = f"""
-        You are a helpful HR assistant.
-        Your task is to analyze candidate CVs against job descriptions.
-        Current state:
-        - Candidate CV: {state.candidate_cv[:100]}...
-        - Job Description: {state.jd[:100]}...
-        - Previous match score: {state.match_score}
-        Please provide a helpful response to the user's query.
-    """
-
-    print(f"Processing state with CV length: {len(state.candidate_cv)}")
-    print(f"Job Description length: {len(state.jd)}")
-    print(f"Current match score: {state.match_score}")
-
-    messages = convert_messages(
-        system_prompts=[{"role": "system", "content": prompts}],
-        state=state,
-    )
-
-    response = await acompletion(
-        model="gemini/gemini-2.5-flash",
-        messages=messages,
-    )
-
-    return ModelResponseConverter(
-        response,
-        converter="litellm",
+# Create agent instance
+def create_main_agent() -> Agent:
+    """Create the main agent for CV and job description analysis."""
+    return Agent(
+        model="gemini-2.5-flash",
+        provider="google",
+        system_prompt=[
+            {
+                "role": "system",
+                "content": """
+                    You are a helpful HR assistant.
+                    Your task is to analyze candidate CVs against job descriptions.
+                    Please provide a helpful response to the user's query.
+                """,
+            },
+        ],
+        trim_context=True,
     )
 
 
@@ -91,31 +71,22 @@ def should_use_tools(state: AgentState) -> str:
     return END
 
 
-# Create graph with custom state type
-graph = StateGraph[MyState](MyState())
-graph.add_node("MAIN", main_agent)
-# graph.add_node("TOOL", tool_node)
+def create_app(initial_state: MyState | None = None) -> Any:
+    """Create and compile the graph application."""
+    state = initial_state or MyState()
+    main_agent = create_main_agent()
 
-# Add conditional edges from MAIN
-# graph.add_conditional_edges(
-#     "MAIN",
-#     should_use_tools,
-#     {"TOOL": "TOOL", END: END},
-# )
+    graph = StateGraph[MyState](state)
+    graph.add_node("MAIN", main_agent)
+    graph.set_entry_point("MAIN")
 
-# Always go back to MAIN after TOOL execution
-# graph.add_edge("TOOL", "MAIN")
-graph.set_entry_point("MAIN")
-
-
-app = graph.compile(
-    checkpointer=checkpointer,
-)
+    return graph.compile(checkpointer=checkpointer)
 
 
 def test_basic_functionality():
     """Test basic functionality with default state."""
     print("=== Testing Basic Functionality ===")
+    app = create_app()
     inp = {"messages": [Message.text_message("Hello, can you help me with CV analysis?")]}
     config = {"thread_id": "basic_test", "recursion_limit": 10}
 
@@ -135,12 +106,7 @@ def test_custom_state_fields():
     custom_state.match_score = 0.85
     custom_state.analysis_results = {"skills_match": True, "experience_match": True}
 
-    # Create new graph with populated state
-    custom_graph = StateGraph[MyState](custom_state)
-    custom_graph.add_node("MAIN", main_agent)
-    custom_graph.set_entry_point("MAIN")
-
-    custom_app = custom_graph.compile(checkpointer=checkpointer)
+    custom_app = create_app(custom_state)
 
     inp = {"messages": [Message.text_message("What's the match score for this candidate?")]}
     config = {"thread_id": "custom_test", "recursion_limit": 10}
@@ -161,11 +127,7 @@ def test_partial_state_update():
     initial_state.match_score = 0.7
     initial_state.analysis_results = {"skills_match": False, "experience_match": True}
 
-    # Create new graph with populated state
-    graph_partial = StateGraph[MyState](initial_state)
-    graph_partial.add_node("MAIN", main_agent)
-    graph_partial.set_entry_point("MAIN")
-    app_partial = graph_partial.compile(checkpointer=checkpointer)
+    app_partial = create_app(initial_state)
 
     # Only update 'jd' field via input_data['state']
     partial_update = {"jd": "Looking for Data Scientist with deep learning experience"}
@@ -188,14 +150,14 @@ def test_partial_state_update():
     print("Returned state keys:", list(updated_state.keys()))
     print("Returned state dict:", updated_state)
     assert "jd" in updated_state, f"Returned state missing 'jd': {updated_state}"
-    assert (
-        updated_state["jd"] == partial_update["jd"]
-    ), f"JD should be updated, got {updated_state.get('jd')}"
+    assert updated_state["jd"] == partial_update["jd"], (
+        f"JD should be updated, got {updated_state.get('jd')}"
+    )
     assert updated_state["candidate_cv"] == old_cv, "CV should remain unchanged"
     assert updated_state["match_score"] == old_score, "Score should remain unchanged"
-    assert (
-        updated_state["analysis_results"] == old_analysis
-    ), "Analysis results should remain unchanged"
+    assert updated_state["analysis_results"] == old_analysis, (
+        "Analysis results should remain unchanged"
+    )
     print("Partial state update test passed!")
     return res
 
