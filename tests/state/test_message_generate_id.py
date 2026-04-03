@@ -1,4 +1,4 @@
-"""Tests for generate_id in agentflow/state/message.py.
+"""Tests for generate_id in agentflow/core/state/message.py.
 
 Covers the int/bigint id_type paths, default_id matching, InjectQ override,
 and awaitable resolution - previously uncovered branches.
@@ -28,9 +28,9 @@ def _mock_iq(id_type: str = "string", generated_id=None) -> MagicMock:
 
 
 def _patch(id_type: str = "string", generated_id=None):
-    """Patch InjectQ.get_instance() on the agentflow.state.message module."""
+    """Patch InjectQ.get_instance() on the current state.message module."""
     return patch(
-        "agentflow.state.message.InjectQ.get_instance",
+        "agentflow.core.state.message.InjectQ.get_instance",
         return_value=_mock_iq(id_type=id_type, generated_id=generated_id),
     )
 

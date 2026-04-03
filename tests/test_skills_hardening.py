@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from agentflow.graph.skills.activation import make_set_skill_tool
-from agentflow.graph.skills.models import SkillMeta
-from agentflow.graph.skills.registry import SkillsRegistry
+from agentflow.core.skills.activation import make_set_skill_tool
+from agentflow.core.skills.models import SkillMeta
+from agentflow.core.skills.registry import SkillsRegistry
 
 
 def _skill(name: str, *, skill_file: str, skill_dir: str, **kwargs) -> SkillMeta:

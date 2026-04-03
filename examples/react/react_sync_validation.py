@@ -1,14 +1,89 @@
+from typing import Any
+
 from dotenv import load_dotenv
 
 from agentflow.core import Agent, StateGraph, ToolNode
 from agentflow.core.state import AgentState, Message
 from agentflow.storage.checkpointer import InMemoryCheckpointer
+from agentflow.utils.callbacks import BaseValidator, CallbackManager
 from agentflow.utils.constants import END
+from agentflow.utils.validators import (
+    MessageContentValidator,
+    PromptInjectionValidator,
+    ValidationError,
+)
 
 
 load_dotenv()
 
 checkpointer = InMemoryCheckpointer()
+
+
+class BusinessPolicyValidator(BaseValidator):
+    """
+    Custom validator to enforce business-specific policies.
+
+    This demonstrates how to create your own validator by extending BaseValidator.
+    """
+
+    def __init__(self, strict_mode: bool = True, max_message_length: int = 10000):
+        self.strict_mode = strict_mode
+        self.max_message_length = max_message_length
+        self.forbidden_topics = [
+            "financial advice",
+            "medical diagnosis",
+            "legal counsel",
+        ]
+
+    def _handle_violation(self, message: str, violation_type: str, details: dict[str, Any]) -> None:
+        """Handle a validation violation."""
+        print(f"[WARNING] Validation violation: {violation_type} - {message}")
+        if self.strict_mode:
+            raise ValidationError(message, violation_type, details)
+
+    async def validate(self, messages: list[Message]) -> bool:
+        """Validate messages according to business policies."""
+        for msg in messages:
+            # Use .text() method to extract text from message content
+            content_str = msg.text()
+            content_lower = content_str.lower()
+
+            # Check message length
+            if len(content_str) > self.max_message_length:
+                self._handle_violation(
+                    f"Message exceeds maximum length of {self.max_message_length} characters",
+                    "message_too_long",
+                    {"message_length": len(content_str), "max_length": self.max_message_length},
+                )
+
+            # Check for forbidden topics
+            for topic in self.forbidden_topics:
+                if topic in content_lower:
+                    self._handle_violation(
+                        f"Message contains forbidden topic: {topic}",
+                        "forbidden_topic",
+                        {"topic": topic, "content_snippet": content_lower[:100]},
+                    )
+
+            # Check for all-caps (shouting) - use original string
+            MIN_CAPS_LENGTH = 10
+            if content_str.isupper() and len(content_str) > MIN_CAPS_LENGTH:
+                self._handle_violation(
+                    "Message contains excessive capitalization",
+                    "excessive_caps",
+                    {"content_length": len(content_str)},
+                )
+
+        return True
+
+
+# Set up callback manager with validators
+callback_manager = CallbackManager()
+callback_manager.register_input_validator(PromptInjectionValidator(strict_mode=True))
+callback_manager.register_input_validator(MessageContentValidator())
+callback_manager.register_input_validator(
+    BusinessPolicyValidator(strict_mode=True, max_message_length=5000)
+)
 
 
 class CustomAgentState(AgentState):
@@ -114,6 +189,7 @@ graph.set_entry_point("MAIN")
 
 app = graph.compile(
     checkpointer=checkpointer,
+    callback_manager=callback_manager,
 )
 
 # now run it

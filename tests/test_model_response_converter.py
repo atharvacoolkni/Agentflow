@@ -13,7 +13,7 @@ from agentflow.core.state.message import Message
 class TestModelResponseConverter:
     """Test suite for ModelResponseConverter."""
 
-    @patch('agentflow.adapters.llm.openai_converter.OpenAIConverter')
+    @patch('agentflow.runtime.adapters.llm.openai_converter.OpenAIConverter')
     def test_initialization_with_string_converter(self, MockConverter):
         """Test initialization with string converter identifier."""
         response = "test response"
@@ -453,7 +453,7 @@ class TestModelResponseConverter:
             assert len(results) == 1
             assert results[0].text() == f"Stream: stream_{i}"
 
-    @patch('agentflow.adapters.llm.google_genai_converter.GoogleGenAIConverter')
+    @patch('agentflow.runtime.adapters.llm.google_genai_converter.GoogleGenAIConverter')
     def test_google_converter_import_and_creation(self, MockGoogle):
         """Test that GoogleGenAIConverter is properly imported and created."""
         mock_instance = Mock(spec=BaseConverter)

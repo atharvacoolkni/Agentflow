@@ -345,7 +345,7 @@ class TestCallLLMWithRetrySuccess:
             ]
         )
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             result = await agent._call_llm_with_retry(
                 [{"role": "user", "content": "Hi"}],
             )
@@ -381,7 +381,7 @@ class TestCallLLMWithRetryExponentialBackoff:
         async def capture_delay(d):
             delays.append(d)
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", side_effect=capture_delay):
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", side_effect=capture_delay):
             result = await agent._call_llm_with_retry(
                 [{"role": "user", "content": "Hi"}],
             )
@@ -414,7 +414,7 @@ class TestCallLLMWithRetryExponentialBackoff:
         async def capture_delay(d):
             delays.append(d)
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", side_effect=capture_delay):
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", side_effect=capture_delay):
             await agent._call_llm_with_retry(
                 [{"role": "user", "content": "Hi"}],
             )
@@ -432,7 +432,7 @@ class TestCallLLMWithRetryExhausted:
             side_effect=_FakeAPIStatusError(503, "always_unavailable"),
         )
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(_FakeAPIStatusError, match="always_unavailable"):
                 await agent._call_llm_with_retry(
                     [{"role": "user", "content": "Hi"}],
@@ -491,7 +491,7 @@ class TestCallLLMFallbackModels:
 
         agent._call_llm = AsyncMock(side_effect=mock_call_llm)
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
             with patch.object(Agent, "_create_client", return_value=_mock_openai_client()):
                 result = await agent._call_llm_with_retry(
                     [{"role": "user", "content": "Hi"}],
@@ -549,7 +549,7 @@ class TestCallLLMFallbackModels:
             side_effect=_FakeAPIStatusError(503, "all_down"),
         )
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
             with patch.object(Agent, "_create_client", return_value=_mock_openai_client()):
                 with pytest.raises(_FakeAPIStatusError, match="all_down"):
                     await agent._call_llm_with_retry(
@@ -694,7 +694,7 @@ class TestConnectionErrors:
             ]
         )
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
             result = await agent._call_llm_with_retry(
                 [{"role": "user", "content": "Hi"}],
             )
@@ -713,7 +713,7 @@ class TestConnectionErrors:
             ]
         )
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
             result = await agent._call_llm_with_retry(
                 [{"role": "user", "content": "Hi"}],
             )
@@ -738,7 +738,7 @@ class TestGoogleRetryable:
             side_effect=[google_error, response],
         )
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
             result = await agent._call_llm_with_retry(
                 [{"role": "user", "content": "Hi"}],
             )
@@ -757,7 +757,7 @@ class TestGoogleRetryable:
             side_effect=[error, response],
         )
 
-        with patch("agentflow.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
+        with patch("agentflow.core.graph.agent_internal.execution.asyncio.sleep", new_callable=AsyncMock):
             result = await agent._call_llm_with_retry(
                 [{"role": "user", "content": "Hi"}],
             )

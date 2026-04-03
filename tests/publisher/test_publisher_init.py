@@ -263,10 +263,10 @@ class TestPublisherModuleReload:
         """Test that import order doesn't matter."""
         # Clear any existing imports
         modules_to_clear = [
-            'agentflow.publisher',
-            'agentflow.publisher.base_publisher',
-            'agentflow.publisher.console_publisher',
-            'agentflow.publisher.events'
+            'agentflow.runtime.publisher',
+            'agentflow.runtime.publisher.base_publisher',
+            'agentflow.runtime.publisher.console_publisher',
+            'agentflow.runtime.publisher.events'
         ]
         
         for module in modules_to_clear:

@@ -117,10 +117,10 @@ class TestOptionalDependencies:
     def test_graceful_degradation_without_openai(self):
         """Test that store module works without openai package."""
         # Force reimport without openai
-        if 'agentflow.store' in sys.modules:
-            del sys.modules['agentflow.store']
-        if 'agentflow.store.embedding.openai_embedding' in sys.modules:
-            del sys.modules['agentflow.store.embedding.openai_embedding']
+        if 'agentflow.storage.store' in sys.modules:
+            del sys.modules['agentflow.storage.store']
+        if 'agentflow.storage.store.embedding.openai_embedding' in sys.modules:
+            del sys.modules['agentflow.storage.store.embedding.openai_embedding']
         
         # Should still be able to import basic store functionality
         from agentflow.storage.store import BaseStore, MemoryRecord
@@ -220,8 +220,8 @@ class TestStoreModuleCompatibility:
         start_time = time.time()
         
         # Fresh import
-        if 'agentflow.store' in sys.modules:
-            del sys.modules['agentflow.store']
+        if 'agentflow.storage.store' in sys.modules:
+            del sys.modules['agentflow.storage.store']
         
         import agentflow.storage.store
         
@@ -332,11 +332,11 @@ class TestStoreModuleEdgeCases:
         """Test that import order doesn't matter."""
         # Clear any existing imports
         modules_to_clear = [
-            'agentflow.store',
-            'agentflow.store.base_store',
-            'agentflow.store.store_schema',
-            'agentflow.store.embedding',
-            'agentflow.store.embedding.base_embedding'
+            'agentflow.storage.store',
+            'agentflow.storage.store.base_store',
+            'agentflow.storage.store.store_schema',
+            'agentflow.storage.store.embedding',
+            'agentflow.storage.store.embedding.base_embedding'
         ]
         
         for module in modules_to_clear:

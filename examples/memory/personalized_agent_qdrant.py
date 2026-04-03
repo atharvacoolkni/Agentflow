@@ -5,8 +5,7 @@ This example demonstrates a sophisticated personalized AI agent that:
 1. Uses TAF framework for agent orchestration
 2. Integrates Mem0 for advanced memory management
 3. Uses Cloud Qdrant for vector storage (768 dimensions for Gemini embeddings)
-4. Leverages LiteLLM for multiple model support
-5. Maintains conversation context and user preferences
+4. Maintains conversation context and user preferences
 
 Setup Required:
 - GOOGLE_API_KEY: For Gemini models (LLM + embeddings)
@@ -24,18 +23,15 @@ QDRANT_API_KEY=your_qdrant_api_key
 import asyncio
 import os
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from dotenv import load_dotenv
-from litellm import acompletion
 from mem0 import Memory
 
-from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.storage.checkpointer import InMemoryCheckpointer
-from agentflow.core.graph import StateGraph
+from agentflow.core import Agent, StateGraph
 from agentflow.core.state import AgentState, Message
+from agentflow.storage.checkpointer import InMemoryCheckpointer
 from agentflow.utils.constants import END
-from agentflow.utils.converter import convert_messages
 
 
 # Load environment variables
@@ -50,10 +46,12 @@ class PersonalizedAgentState(AgentState):
     """Extended state for personalized agent with user context."""
 
     user_id: str = ""
-    user_profile: Dict[str, Any] = {}
+    user_profile: dict[str, Any] = {}
     session_id: str = ""
     conversation_summary: str = ""
     interaction_count: int = 0
+    memory_context: str = ""
+    preferences_context: str = ""
 
 
 class PersonalizedAgent:
@@ -104,12 +102,42 @@ class PersonalizedAgent:
     def _build_agent_graph(self):
         """Build the TAF agent graph with memory integration."""
 
+        # Create the response agent with state-interpolated system prompt
+        self.response_agent = Agent(
+            model="gemini-2.0-flash",
+            provider="google",
+            system_prompt=[
+                {
+                    "role": "system",
+                    "content": """You are a highly personalized AI assistant. You maintain context across conversations and adapt to user preferences.
+
+User ID: {user_id}
+Interaction Count: {interaction_count}
+
+{memory_context}
+{preferences_context}
+
+Instructions:
+1. Reference relevant past interactions when appropriate
+2. Adapt your communication style based on user preferences
+3. Be helpful, engaging, and maintain conversation continuity
+4. If this is a new user, introduce yourself warmly
+5. Always provide thoughtful, context-aware responses
+
+Current conversation:""",
+                },
+            ],
+            trim_context=True,
+            temperature=0.7,
+            max_tokens=1500,
+        )
+
         # Create state graph
         self.graph = StateGraph[PersonalizedAgentState](PersonalizedAgentState())
 
         # Add nodes
         self.graph.add_node("memory_retrieval", self._memory_retrieval_node)
-        self.graph.add_node("personalized_response", self._personalized_response_node)
+        self.graph.add_node("personalized_response", self.response_agent)
         self.graph.add_node("memory_storage", self._memory_storage_node)
 
         # Define flow
@@ -127,13 +155,13 @@ class PersonalizedAgent:
         if not state.context:
             return state
 
-        user_message = state.context[-1].content
+        user_message = state.context[-1]
         user_id = state.user_id
 
         try:
             # Search for relevant memories
             memories = self.memory.search(
-                query=user_message,
+                query=user_message.text(),
                 user_id=user_id,
                 limit=5,
             )
@@ -154,6 +182,22 @@ class PersonalizedAgent:
                     ):
                         preferences[f"preference_{len(preferences)}"] = memory_text
 
+            # Build context strings for state interpolation
+            if memory_context:
+                state.memory_context = (
+                    "Based on our previous conversations, I remember:\n"
+                    + "\n".join([f"• {memory}" for memory in memory_context[:3]])
+                )
+                state.conversation_summary = " | ".join(memory_context[:2])
+            else:
+                state.memory_context = ""
+                state.conversation_summary = ""
+
+            if preferences:
+                state.preferences_context = "\nYour preferences: " + "; ".join(preferences.values())
+            else:
+                state.preferences_context = ""
+
             # Update state with retrieved context
             state.user_profile = {
                 "recent_memories": memory_context[:3],  # Top 3 most relevant
@@ -161,96 +205,28 @@ class PersonalizedAgent:
                 "memory_count": len(memory_context),
             }
 
-            state.conversation_summary = " | ".join(memory_context[:2]) if memory_context else ""
-
             print(f"🧠 Retrieved {len(memory_context)} relevant memories for user {user_id}")
 
         except Exception as e:
             print(f"❌ Error retrieving memories: {e}")
             # Continue without memory context
             state.user_profile = {"error": str(e)}
-
-        return state
-
-    async def _personalized_response_node(
-        self, state: PersonalizedAgentState
-    ) -> PersonalizedAgentState:
-        """Generate personalized response using retrieved memories."""
-
-        # Build context from memories
-        memory_context = ""
-        if state.user_profile.get("recent_memories"):
-            memory_context = "\n".join(
-                [
-                    "Based on our previous conversations, I remember:",
-                    *[f"• {memory}" for memory in state.user_profile["recent_memories"]],
-                ]
-            )
-
-        preferences_context = ""
-        if state.user_profile.get("preferences"):
-            preferences_context = "\nYour preferences: " + "; ".join(
-                state.user_profile["preferences"].values()
-            )
-
-        # Create personalized system prompt
-        system_prompt = f"""You are a highly personalized AI assistant. You maintain context across conversations and adapt to user preferences.
-
-User ID: {state.user_id}
-Interaction Count: {state.interaction_count + 1}
-
-{memory_context}
-{preferences_context}
-
-Instructions:
-1. Reference relevant past interactions when appropriate
-2. Adapt your communication style based on user preferences
-3. Be helpful, engaging, and maintain conversation continuity
-4. If this is a new user, introduce yourself warmly
-5. Always provide thoughtful, context-aware responses
-
-Current conversation:"""
-
-        # Convert messages for LiteLLM
-        messages = convert_messages(
-            system_prompts=[{"role": "system", "content": system_prompt}], state=state
-        )
-
-        try:
-            # Generate response using Gemini
-            response = await acompletion(
-                model="gemini/gemini-2.0-flash", messages=messages, temperature=0.7, max_tokens=1500
-            )
-
-            # Convert response and update state
-            model_response = ModelResponseConverter(response, converter="litellm")
-
-            # Add the AI response to messages
-            ai_message = Message.text_message(model_response.message.content, role="assistant")
-            state.messages.append(ai_message)
-            state.interaction_count += 1
-
-            print(f"🤖 Generated personalized response for user {state.user_id}")
-
-        except Exception as e:
-            print(f"❌ Error generating response: {e}")
-            # Fallback response
-            error_message = Message.text_message(
-                "I apologize, but I'm having trouble processing your request right now. Please try again.",
-                role="assistant",
-            )
-            state.messages.append(error_message)
+            state.memory_context = ""
+            state.preferences_context = ""
 
         return state
 
     async def _memory_storage_node(self, state: PersonalizedAgentState) -> PersonalizedAgentState:
         """Store the interaction in long-term memory."""
 
-        if len(state.messages) < 2:
+        # Increment interaction count
+        state.interaction_count += 1
+
+        if len(state.context) < 2:
             return state
 
-        user_message = state.messages[-2]  # User's message
-        ai_message = state.messages[-1]  # AI's response
+        user_message = state.context[-2]  # User's message
+        ai_message = state.context[-1]  # AI's response
 
         try:
             # Prepare interaction for memory storage
@@ -276,7 +252,9 @@ Current conversation:"""
             }
 
             result = self.memory.add(
-                messages=interaction, user_id=state.user_id, metadata=metadata, output_format="v1.1"
+                messages=interaction,
+                user_id=state.user_id,
+                metadata=metadata,
             )
 
             stored_count = len(result.get("results", [])) if isinstance(result, dict) else 0
@@ -287,14 +265,14 @@ Current conversation:"""
 
         return state
 
-    async def chat(self, user_input: str, user_id: str, session_id: str = None) -> str:
+    async def chat(self, user_input: str, user_id: str, session_id: str) -> str:
         """
         Main chat interface for the personalized agent.
 
         Args:
             user_input: The user's message
             user_id: Unique identifier for the user
-            session_id: Optional session identifier
+            session_id: Session identifier
 
         Returns:
             The agent's response
@@ -303,31 +281,30 @@ Current conversation:"""
         if not session_id:
             session_id = f"{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        # Create initial state
-        initial_state = PersonalizedAgentState(
-            messages=[Message.text_message(user_input, role="user")],
-            user_id=user_id,
-            session_id=session_id,
-        )
-
         # Configure conversation thread
         config = {
             "thread_id": session_id,
             "configurable": {"user_id": user_id, "session_id": session_id},
         }
 
+        inp = {"messages": [Message.text_message(user_input, role="user")]}
+
         # Run the agent
-        result = await self.app.ainvoke(initial_state, config=config)
+        result = await self.app.ainvoke(inp, config=config)
 
         # Return the AI's response
         return (
-            result.messages[-1].content if result.messages else "I couldn't process your request."
+            result["messages"][-1].text()
+            if result["messages"]
+            else "I couldn't process your request."
         )
 
-    def get_user_memories(self, user_id: str, limit: int = 10) -> List[Dict]:
+    def get_user_memories(self, user_id: str, limit: int = 10) -> list[dict]:
         """Get all memories for a specific user."""
         try:
-            memories = self.memory.get_all(user_id=user_id, output_format="v1.1")
+            memories = self.memory.get_all(
+                user_id=user_id,
+            )
             return memories.get("results", [])[:limit] if isinstance(memories, dict) else []
         except Exception as e:
             print(f"❌ Error retrieving user memories: {e}")

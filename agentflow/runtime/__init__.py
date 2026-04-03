@@ -47,7 +47,7 @@ _SYMBOL_EXPORTS = {
     "MessageContext": ".protocols.acp",
 }
 
-__all__ = [* _MODULE_EXPORTS, * _SYMBOL_EXPORTS]
+__all__ = list(_MODULE_EXPORTS) + list(_SYMBOL_EXPORTS)
 
 
 def __getattr__(name: str):

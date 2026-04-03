@@ -1,21 +1,14 @@
 """Integration adapters for optional third-party LLM SDKs.
 
-This module exposes universal converter APIs to normalize responses and
-streaming outputs from popular LLM SDKs (for example OpenAI and Google
-GenAI) for use in agentflow agent graphs. Adapters provide unified
-conversion, streaming, and message normalization for agent workflows.
-
-Exports:
-    BaseConverter: Abstract base class for LLM response converters.
-    ConverterType: Enum of supported converter types.
-    GoogleGenAIConverter: Converter for Google Generative AI responses and streams.
-    OpenAIConverter: Converter for OpenAI responses and streams.
+This package exposes a small, stable surface for response converters without
+eagerly importing every concrete implementation during package import. The
+lazy behavior avoids import cycles with graph/runtime modules that reference
+converter types during test collection.
 """
 
+from __future__ import annotations
+
 from .base_converter import BaseConverter, ConverterType
-from .google_genai_converter import GoogleGenAIConverter
-from .openai_converter import OpenAIConverter
-from .openai_responses_converter import OpenAIResponsesConverter
 
 
 __all__ = [
@@ -25,3 +18,19 @@ __all__ = [
     "OpenAIConverter",
     "OpenAIResponsesConverter",
 ]
+
+
+def __getattr__(name: str):
+    if name == "GoogleGenAIConverter":
+        from .google_genai_converter import GoogleGenAIConverter
+
+        return GoogleGenAIConverter
+    if name == "OpenAIConverter":
+        from .openai_converter import OpenAIConverter
+
+        return OpenAIConverter
+    if name == "OpenAIResponsesConverter":
+        from .openai_responses_converter import OpenAIResponsesConverter
+
+        return OpenAIResponsesConverter
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

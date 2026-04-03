@@ -7,15 +7,12 @@ but with multiple specialized agents that hand off work between each other.
 """
 
 from dotenv import load_dotenv
-from litellm import completion
 
-from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.storage.checkpointer import InMemoryCheckpointer
-from agentflow.core.graph import StateGraph, ToolNode
-from agentflow.prebuilt.tools import create_handoff_tool
+from agentflow.core import Agent, StateGraph, ToolNode
 from agentflow.core.state import AgentState, Message
+from agentflow.prebuilt.tools import create_handoff_tool
+from agentflow.storage.checkpointer import InMemoryCheckpointer
 from agentflow.utils.constants import END
-from agentflow.utils.converter import convert_messages
 
 
 load_dotenv()
@@ -102,137 +99,71 @@ writer_tools = ToolNode(
 
 
 # ============================================================================
-# Define Agent Functions
+# Create Agents using Agent class
 # ============================================================================
 
+coordinator_agent = Agent(
+    model="gemini-2.0-flash-exp",
+    provider="google",
+    system_prompt=[
+        {
+            "role": "system",
+            "content": """
+                You are a coordinator agent. Your job is to:
+                1. Understand user requests
+                2. Delegate tasks to specialized agents:
+                   - Use transfer_to_researcher for investigation and research tasks
+                   - Use transfer_to_writer for content creation and writing tasks
+                3. You can also check weather using get_weather tool
 
-def coordinator_agent(state: AgentState):
-    """
-    Coordinator agent that delegates tasks to specialized agents.
-    """
-    prompts = """
-        You are a coordinator agent. Your job is to:
-        1. Understand user requests
-        2. Delegate tasks to specialized agents:
-           - Use transfer_to_researcher for investigation and research tasks
-           - Use transfer_to_writer for content creation and writing tasks
-        3. You can also check weather using get_weather tool
+                Always explain your decision to delegate and why you're choosing a specific agent.
+            """,
+        },
+    ],
+    tool_node_name="COORDINATOR_TOOLS",
+    trim_context=True,
+)
 
-        Always explain your decision to delegate and why you're choosing a specific agent.
-    """
+researcher_agent = Agent(
+    model="gemini-2.0-flash-exp",
+    provider="google",
+    system_prompt=[
+        {
+            "role": "system",
+            "content": """
+                You are a research specialist. Your job is to:
+                1. Investigate topics thoroughly using the search_web tool
+                2. Gather comprehensive information
+                3. When research is complete, you can:
+                   - Transfer to writer agent if content needs to be created
+                   - Transfer back to coordinator if task is complete
+                Be thorough in your research and explain your findings clearly.
+            """,
+        },
+    ],
+    tool_node_name="RESEARCHER_TOOLS",
+    trim_context=True,
+)
 
-    messages = convert_messages(
-        system_prompts=[
-            {
-                "role": "system",
-                "content": prompts,
-            },
-        ],
-        state=state,
-    )
+writer_agent = Agent(
+    model="gemini-2.0-flash-exp",
+    provider="google",
+    system_prompt=[
+        {
+            "role": "system",
+            "content": """
+                You are a writing specialist. Your job is to:
+                1. Create clear, engaging content
+                2. Use the write_document tool to save content
+                3. Transfer back to coordinator when writing is complete
 
-    # Check if last message is a tool result
-    if state.context and len(state.context) > 0 and state.context[-1].role == "tool":
-        # Make final response without tools
-        response = completion(
-            model="gemini/gemini-2.0-flash-exp",
-            messages=messages,
-        )
-    else:
-        # Regular response with tools available
-        tools = coordinator_tools.all_tools_sync()
-        response = completion(
-            model="gemini/gemini-2.0-flash-exp",
-            messages=messages,
-            tools=tools,
-        )
-
-    return ModelResponseConverter(response, converter="litellm")
-
-
-def researcher_agent(state: AgentState):
-    """
-    Researcher agent that performs detailed investigation.
-    """
-    prompts = """
-        You are a research specialist. Your job is to:
-        1. Investigate topics thoroughly using the search_web tool
-        2. Gather comprehensive information
-        3. When research is complete, you can:
-           - Transfer to writer agent if content needs to be created
-           - Transfer back to coordinator if task is complete
-        Be thorough in your research and explain your findings clearly.
-    """
-
-    messages = convert_messages(
-        system_prompts=[
-            {
-                "role": "system",
-                "content": prompts,
-            },
-        ],
-        state=state,
-    )
-
-    # Check if last message is a tool result
-    if state.context and len(state.context) > 0 and state.context[-1].role == "tool":
-        # Make final response without tools
-        response = completion(
-            model="gemini/gemini-2.0-flash-exp",
-            messages=messages,
-        )
-    else:
-        # Regular response with tools available
-        tools = researcher_tools.all_tools_sync()
-        response = completion(
-            model="gemini/gemini-2.0-flash-exp",
-            messages=messages,
-            tools=tools,
-        )
-
-    return ModelResponseConverter(response, converter="litellm")
-
-
-def writer_agent(state: AgentState):
-    """
-    Writer agent that creates content and documents.
-    """
-    prompts = """
-        You are a writing specialist. Your job is to:
-        1. Create clear, engaging content
-        2. Use the write_document tool to save content
-        3. Transfer back to coordinator when writing is complete
-        
-        Focus on clarity, structure, and engaging writing.
-    """
-
-    messages = convert_messages(
-        system_prompts=[
-            {
-                "role": "system",
-                "content": prompts,
-            },
-        ],
-        state=state,
-    )
-
-    # Check if last message is a tool result
-    if state.context and len(state.context) > 0 and state.context[-1].role == "tool":
-        # Make final response without tools
-        response = completion(
-            model="gemini/gemini-2.0-flash-exp",
-            messages=messages,
-        )
-    else:
-        # Regular response with tools available
-        tools = writer_tools.all_tools_sync()
-        response = completion(
-            model="gemini/gemini-2.0-flash-exp",
-            messages=messages,
-            tools=tools,
-        )
-
-    return ModelResponseConverter(response, converter="litellm")
+                Focus on clarity, structure, and engaging writing.
+            """,
+        },
+    ],
+    tool_node_name="WRITER_TOOLS",
+    trim_context=True,
+)
 
 
 # ============================================================================
@@ -243,7 +174,7 @@ def writer_agent(state: AgentState):
 def should_continue_coordinator(state: AgentState) -> str:
     """Route from coordinator to tools or end."""
     if not state.context or len(state.context) == 0:
-        return "coordinator_tools"
+        return "COORDINATOR_TOOLS"
 
     last_message = state.context[-1]
 
@@ -253,10 +184,10 @@ def should_continue_coordinator(state: AgentState) -> str:
         and len(last_message.tools_calls) > 0
         and last_message.role == "assistant"
     ):
-        return "coordinator_tools"
+        return "COORDINATOR_TOOLS"
 
     if last_message.role == "tool":
-        return "coordinator"
+        return "COORDINATOR"
 
     return END
 
@@ -264,7 +195,7 @@ def should_continue_coordinator(state: AgentState) -> str:
 def should_continue_researcher(state: AgentState) -> str:
     """Route from researcher to tools or end."""
     if not state.context or len(state.context) == 0:
-        return "researcher_tools"
+        return "RESEARCHER_TOOLS"
 
     last_message = state.context[-1]
 
@@ -274,10 +205,10 @@ def should_continue_researcher(state: AgentState) -> str:
         and len(last_message.tools_calls) > 0
         and last_message.role == "assistant"
     ):
-        return "researcher_tools"
+        return "RESEARCHER_TOOLS"
 
     if last_message.role == "tool":
-        return "researcher"
+        return "RESEARCHER"
 
     return END
 
@@ -285,7 +216,7 @@ def should_continue_researcher(state: AgentState) -> str:
 def should_continue_writer(state: AgentState) -> str:
     """Route from writer to tools or end."""
     if not state.context or len(state.context) == 0:
-        return "writer_tools"
+        return "WRITER_TOOLS"
 
     last_message = state.context[-1]
 
@@ -295,10 +226,10 @@ def should_continue_writer(state: AgentState) -> str:
         and len(last_message.tools_calls) > 0
         and last_message.role == "assistant"
     ):
-        return "writer_tools"
+        return "WRITER_TOOLS"
 
     if last_message.role == "tool":
-        return "writer"
+        return "WRITER"
 
     return END
 
@@ -310,42 +241,42 @@ def should_continue_writer(state: AgentState) -> str:
 graph = StateGraph()
 
 # Add agent nodes
-graph.add_node("coordinator", coordinator_agent)
-graph.add_node("coordinator_tools", coordinator_tools)
-graph.add_node("researcher", researcher_agent)
-graph.add_node("researcher_tools", researcher_tools)
-graph.add_node("writer", writer_agent)
-graph.add_node("writer_tools", writer_tools)
+graph.add_node("COORDINATOR", coordinator_agent)
+graph.add_node("COORDINATOR_TOOLS", coordinator_tools)
+graph.add_node("RESEARCHER", researcher_agent)
+graph.add_node("RESEARCHER_TOOLS", researcher_tools)
+graph.add_node("WRITER", writer_agent)
+graph.add_node("WRITER_TOOLS", writer_tools)
 
 # Set entry point
-graph.set_entry_point("coordinator")
+graph.set_entry_point("COORDINATOR")
 
 # Add edges for coordinator
 graph.add_conditional_edges(
-    "coordinator",
+    "COORDINATOR",
     should_continue_coordinator,
     {
-        "coordinator_tools": "coordinator_tools",
+        "COORDINATOR_TOOLS": "COORDINATOR_TOOLS",
         END: END,
     },
 )
 
 # Add edges for researcher
 graph.add_conditional_edges(
-    "researcher",
+    "RESEARCHER",
     should_continue_researcher,
     {
-        "researcher_tools": "researcher_tools",
+        "RESEARCHER_TOOLS": "RESEARCHER_TOOLS",
         END: END,
     },
 )
 
 # Add edges for writer
 graph.add_conditional_edges(
-    "writer",
+    "WRITER",
     should_continue_writer,
     {
-        "writer_tools": "writer_tools",
+        "WRITER_TOOLS": "WRITER_TOOLS",
         END: END,
     },
 )
