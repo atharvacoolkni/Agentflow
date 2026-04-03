@@ -14,7 +14,8 @@ import logging
 from typing import Any
 
 from agentflow.core.state.message_block import ImageBlock
-from agentflow.storage.media.config import MultimodalConfig
+
+from .config import MultimodalConfig
 
 
 logger = logging.getLogger("agentflow.media.processor")

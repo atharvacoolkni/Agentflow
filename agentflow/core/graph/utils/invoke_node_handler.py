@@ -299,7 +299,7 @@ class InvokeNodeHandler(BaseLoggingMixin):
             )
 
         if isinstance(self.func, ToolNode):
-            return await self._invoke_tool_node(state, config)
+            return await self._invoke_tool_node(state, config)  # type: ignore
 
         return await self._call_normal_node(
             state,

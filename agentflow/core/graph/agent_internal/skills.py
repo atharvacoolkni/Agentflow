@@ -9,8 +9,8 @@ from agentflow.core.graph.tool_node import ToolNode
 
 
 if TYPE_CHECKING:
-    from agentflow.graph.skills.models import SkillConfig
-    from agentflow.graph.skills.registry import SkillsRegistry
+    from agentflow.core.skills.models import SkillConfig
+    from agentflow.core.skills.registry import SkillsRegistry
 
 
 logger = logging.getLogger("agentflow.agent")
@@ -38,9 +38,9 @@ class AgentSkillsMixin:
         if skills is None:
             return
 
-        from agentflow.graph.skills.activation import make_set_skill_tool
-        from agentflow.graph.skills.models import SkillConfig
-        from agentflow.graph.skills.registry import SkillsRegistry
+        from agentflow.core.skills.activation import make_set_skill_tool
+        from agentflow.core.skills.models import SkillConfig
+        from agentflow.core.skills.registry import SkillsRegistry
 
         if not isinstance(skills, SkillConfig):
             raise TypeError(f"Expected SkillConfig, got {type(skills)}")

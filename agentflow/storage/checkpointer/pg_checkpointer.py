@@ -41,7 +41,7 @@ from agentflow.core.state import AgentState, Message
 from .base_checkpointer import BaseCheckpointer
 
 
-logger = logging.getLogger("agentflow.checkpointer")
+logger = logging.getLogger("agentflow.checkpointer.pg")
 
 StateT = TypeVar("StateT", bound="AgentState")
 

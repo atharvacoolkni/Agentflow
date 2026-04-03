@@ -63,7 +63,7 @@ class BaseLoggingMixin:
         Returns:
             Logger instance configured for this handler's module.
         """
-        return logging.getLogger(getattr(self, "__module__", __name__))
+        return logging.getLogger("agentflow.graph")
 
     def _log_start(self, msg: str, *args: Any) -> None:
         """Log an informational message for process start/initialization.
