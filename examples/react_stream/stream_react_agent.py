@@ -3,15 +3,12 @@ import logging
 from typing import Any
 
 from dotenv import load_dotenv
-from litellm import acompletion
 
-from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.storage.checkpointer import InMemoryCheckpointer
-from agentflow.core.graph import StateGraph, ToolNode
+from agentflow.core import Agent, StateGraph, ToolNode
 from agentflow.core.state import AgentState, Message
+from agentflow.storage.checkpointer import InMemoryCheckpointer
 from agentflow.utils import ResponseGranularity
 from agentflow.utils.constants import END
-from agentflow.utils.converter import convert_messages
 
 
 logging.basicConfig(
@@ -52,91 +49,22 @@ tool_node = ToolNode([get_weather])
 print("Registered tools:", list(tool_node._funcs.keys()))
 
 
-async def main_agent(
-    state: AgentState,
-    config: dict[str, Any],
-    checkpointer: Any | None = None,
-    store: Any | None = None,
-):
-    prompts = """
-        You are a helpful assistant.
-        Answer conversationally. Use tools when needed.
-    """
-
-    messages = convert_messages(
-        system_prompts=[{"role": "system", "content": prompts}],
-        state=state,
-    )
-
-    is_stream = config.get("is_stream", False)
-
-    if state.context and len(state.context) > 0 and state.context[-1].role == "tool":
-        response = await acompletion(
-            model="gemini/gemini-2.5-flash",
-            messages=messages,
-            stream=is_stream,
-        )
-    else:
-        tools = await tool_node.all_tools()
-        # Avoid streaming when tools are enabled to ensure tool-calls are parsed properly
-        response = await acompletion(
-            model="gemini/gemini-2.5-flash",
-            messages=messages,
-            tools=tools,
-            stream=is_stream,
-        )
-
-    return ModelResponseConverter(
-        response,
-        converter="litellm",
-    )
-
-
-def main_agent_sync(
-    state: AgentState,
-    config: dict[str, Any],
-    checkpointer: Any | None = None,
-    store: Any | None = None,
-):
-    """
-    Synchronous version of main_agent for testing.
-    """
-
-    prompts = """
-        You are a helpful assistant.
-        Answer conversationally. Use tools when needed.
-    """
-
-    messages = convert_messages(
-        system_prompts=[{"role": "system", "content": prompts}],
-        state=state,
-    )
-
-    is_stream = config.get("is_stream", False)
-
-    async def _async_call():
-        if state.context and len(state.context) > 0 and state.context[-1].role == "tool":
-            response = await acompletion(
-                model="gemini/gemini-2.5-flash",
-                messages=messages,
-                stream=is_stream,
-            )
-        else:
-            tools = await tool_node.all_tools()
-            # Avoid streaming when tools are enabled to ensure tool-calls are parsed properly
-            response = await acompletion(
-                model="gemini/gemini-2.5-flash",
-                messages=messages,
-                tools=tools,
-                stream=False,
-            )
-        return ModelResponseConverter(
-            response,
-            converter="litellm",
-        )
-
-    # Run the async call synchronously
-    return asyncio.run(_async_call())
+# Create the main agent using Agent class
+main_agent = Agent(
+    model="gemini-2.5-flash",
+    provider="google",
+    system_prompt=[
+        {
+            "role": "system",
+            "content": """
+                You are a helpful assistant.
+                Answer conversationally. Use tools when needed.
+            """,
+        },
+    ],
+    tools=tool_node,
+    trim_context=True,
+)
 
 
 def should_use_tools(state: AgentState) -> str:
@@ -194,9 +122,25 @@ async def run_stream_test() -> None:
 
 async def run_sync_test() -> None:
     """Test sync main_agent implementation"""
-    # Create a graph with sync main_agent
+    # Create a graph with sync main_agent using Agent class
+    sync_agent = Agent(
+        model="gemini-2.5-flash",
+        provider="google",
+        system_prompt=[
+            {
+                "role": "system",
+                "content": """
+                    You are a helpful assistant.
+                    Answer conversationally. Use tools when needed.
+                """,
+            },
+        ],
+        tools=tool_node,
+        trim_context=True,
+    )
+
     sync_graph = StateGraph()
-    sync_graph.add_node("MAIN", main_agent_sync)
+    sync_graph.add_node("MAIN", sync_agent)
     sync_graph.add_node("TOOL", tool_node)
 
     sync_graph.add_conditional_edges(
@@ -227,56 +171,25 @@ async def run_sync_test() -> None:
 
 async def run_sync_stream_test() -> None:
     """Test sync stream main_agent implementation"""
-    # Create a graph with sync stream main_agent
+    # Create a graph with sync stream main_agent using Agent class
+    sync_stream_agent = Agent(
+        model="gemini-2.5-flash",
+        provider="google",
+        system_prompt=[
+            {
+                "role": "system",
+                "content": """
+                    You are a helpful assistant.
+                    Answer conversationally. Use tools when needed.
+                """,
+            },
+        ],
+        tools=tool_node,
+        trim_context=True,
+    )
+
     sync_stream_graph = StateGraph()
-
-    def main_agent_sync_stream(
-        state: AgentState,
-        config: dict[str, Any],
-        checkpointer: Any | None = None,
-        store: Any | None = None,
-    ):
-        """
-        Synchronous streaming version of main_agent for testing.
-        """
-
-        prompts = """
-            You are a helpful assistant.
-            Answer conversationally. Use tools when needed.
-        """
-
-        messages = convert_messages(
-            system_prompts=[{"role": "system", "content": prompts}],
-            state=state,
-        )
-
-        # Enable streaming
-        is_stream = True
-
-        async def _async_call():
-            if state.context and len(state.context) > 0 and state.context[-1].role == "tool":
-                response = await acompletion(
-                    model="gemini/gemini-2.5-flash",
-                    messages=messages,
-                    stream=is_stream,
-                )
-            else:
-                tools = await tool_node.all_tools()
-                response = await acompletion(
-                    model="gemini/gemini-2.5-flash",
-                    messages=messages,
-                    tools=tools,
-                    stream=is_stream,
-                )
-            return ModelResponseConverter(
-                response,
-                converter="litellm",
-            )
-
-        # Run the async call synchronously
-        return asyncio.run(_async_call())
-
-    sync_stream_graph.add_node("MAIN", main_agent_sync_stream)
+    sync_stream_graph.add_node("MAIN", sync_stream_agent)
     sync_stream_graph.add_node("TOOL", tool_node)
 
     sync_stream_graph.add_conditional_edges(
@@ -307,49 +220,25 @@ async def run_sync_stream_test() -> None:
 
 async def run_non_stream_test() -> None:
     """Test non-streaming main_agent implementation"""
-    # Create a graph with non-streaming main_agent
+    # Create a graph with non-streaming main_agent using Agent class
+    non_stream_agent = Agent(
+        model="gemini-2.5-flash",
+        provider="google",
+        system_prompt=[
+            {
+                "role": "system",
+                "content": """
+                    You are a helpful assistant.
+                    Answer conversationally. Use tools when needed.
+                """,
+            },
+        ],
+        tools=tool_node,
+        trim_context=True,
+    )
+
     non_stream_graph = StateGraph()
-
-    async def main_agent_non_stream(
-        state: AgentState,
-        config: dict[str, Any],
-        checkpointer: Any | None = None,
-        store: Any | None = None,
-    ):
-        prompts = """
-            You are a helpful assistant.
-            Answer conversationally. Use tools when needed.
-        """
-
-        messages = convert_messages(
-            system_prompts=[{"role": "system", "content": prompts}],
-            state=state,
-        )
-
-        # Always disable streaming
-        is_stream = False
-
-        if state.context and len(state.context) > 0 and state.context[-1].role == "tool":
-            response = await acompletion(
-                model="gemini/gemini-2.5-flash",
-                messages=messages,
-                stream=is_stream,
-            )
-        else:
-            tools = await tool_node.all_tools()
-            response = await acompletion(
-                model="gemini/gemini-2.5-flash",
-                messages=messages,
-                tools=tools,
-                stream=is_stream,
-            )
-
-        return ModelResponseConverter(
-            response,
-            converter="litellm",
-        )
-
-    non_stream_graph.add_node("MAIN", main_agent_non_stream)
+    non_stream_graph.add_node("MAIN", non_stream_agent)
     non_stream_graph.add_node("TOOL", tool_node)
 
     non_stream_graph.add_conditional_edges(

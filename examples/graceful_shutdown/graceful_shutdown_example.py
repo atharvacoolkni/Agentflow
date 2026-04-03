@@ -13,13 +13,9 @@ import datetime
 import logging
 import sys
 
-from litellm import acompletion
-
-from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.core.graph import StateGraph, ToolNode
+from agentflow.core import Agent, StateGraph, ToolNode
 from agentflow.core.state import AgentState, Message
 from agentflow.utils import END
-from agentflow.utils.converter import convert_messages
 from agentflow.utils.shutdown import GracefulShutdownManager
 
 # Configure logging
@@ -56,37 +52,21 @@ def calculate(expression: str, tool_call_id: str | None = None) -> str:
 tool_node = ToolNode([get_current_time, get_system_status, calculate])
 
 
-# Define the main agent node
-async def main_agent(state: AgentState) -> ModelResponseConverter:
-    """Main agent that reasons and decides when to use tools."""
-    system_prompt = """You are a helpful assistant with access to tools.
+# Create the main agent using Agent class
+main_agent = Agent(
+    model="gemini-2.0-flash-exp",
+    provider="google",
+    system_prompt=[
+        {
+            "role": "system",
+            "content": """You are a helpful assistant with access to tools.
 You can check the time, system status, and perform calculations.
-Use tools when appropriate to help answer user questions."""
-
-    messages = convert_messages(
-        system_prompts=[{"role": "system", "content": system_prompt}],
-        state=state,
-    )
-
-    # Check if last message is a tool result
-    needs_tools = not (state.context and state.context[-1].role == "tool")
-
-    if needs_tools:
-        # Include tools in the request
-        tools = await tool_node.all_tools()
-        response = await acompletion(
-            model="gemini/gemini-2.0-flash-exp",
-            messages=messages,
-            tools=tools,
-        )
-    else:
-        # Final response without tools
-        response = await acompletion(
-            model="gemini/gemini-2.0-flash-exp",
-            messages=messages,
-        )
-
-    return ModelResponseConverter(response, converter="litellm")
+Use tools when appropriate to help answer user questions.""",
+        },
+    ],
+    tools=tool_node,
+    trim_context=True,
+)
 
 
 def route_decision(state: AgentState) -> str:

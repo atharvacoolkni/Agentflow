@@ -5,7 +5,6 @@ A streamlined example showing basic integration between:
 - TAF for agent framework
 - Mem0 for memory management
 - Cloud Qdrant for vector storage
-- LiteLLM for model calls
 
 This example demonstrates a chatbot that remembers user preferences and conversation history.
 """
@@ -14,14 +13,11 @@ import asyncio
 import os
 
 from dotenv import load_dotenv
-from litellm import acompletion
 from mem0 import Memory
 
-from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.core.graph import StateGraph
+from agentflow.core import Agent, StateGraph
 from agentflow.core.state import AgentState, Message
 from agentflow.utils.constants import END
-from agentflow.utils.converter import convert_messages
 
 
 # Load environment variables
@@ -33,9 +29,10 @@ os.environ["MEM0_API_KEY"] = os.getenv("MEM0_API_KEY", "")
 
 
 class MemoryAgentState(AgentState):
-    """State with user ID for memory context."""
+    """State with user ID and memory context for interpolation."""
 
     user_id: str = ""
+    memory_context: str = ""
 
 
 class SimplePersonalizedAgent:
@@ -65,22 +62,45 @@ class SimplePersonalizedAgent:
         self._build_graph()
 
     def _build_graph(self):
-        """Build TAF graph."""
+        """Build TAF graph with memory integration."""
+        # Create the response agent with state-interpolated system prompt
+        self.response_agent = Agent(
+            model="gemini-2.0-flash",
+            provider="google",
+            system_prompt=[
+                {
+                    "role": "system",
+                    "content": """You are a helpful AI assistant with memory of past conversations.
+
+{memory_context}
+
+Be conversational, helpful, and reference past interactions when relevant.""",
+                },
+            ],
+            trim_context=True,
+        )
+
         graph = StateGraph[MemoryAgentState](MemoryAgentState())
 
-        graph.add_node("chat", self._chat_with_memory)
-        graph.set_entry_point("chat")
-        graph.add_edge("chat", END)
+        graph.add_node("memory_retrieval", self._memory_retrieval_node)
+        graph.add_node("chat", self.response_agent)
+        graph.add_node("memory_storage", self._memory_storage_node)
+
+        graph.set_entry_point("memory_retrieval")
+        graph.add_edge("memory_retrieval", "chat")
+        graph.add_edge("chat", "memory_storage")
+        graph.add_edge("memory_storage", END)
 
         self.app = graph.compile()
 
-    async def _chat_with_memory(self, state: MemoryAgentState) -> MemoryAgentState:
-        """Chat node with memory integration."""
-        messages = convert_messages(system_prompts=[{"role": "system", "content": ""}], state=state)
-        user_message = messages[-1]["content"]
+    async def _memory_retrieval_node(self, state: MemoryAgentState) -> MemoryAgentState:
+        """Retrieve relevant memories and build context for interpolation."""
+        if not state.context:
+            return state
+
+        user_message = state.context[-1].text()
         user_id = state.user_id
 
-        # Retrieve relevant memories
         memories = []
         try:
             memory_results = self.memory.search(
@@ -91,61 +111,53 @@ class SimplePersonalizedAgent:
 
             if "results" in memory_results:
                 memories = [m["memory"] for m in memory_results["results"]]
-            print(f"retreived {len(memories)} memories")
+            print(f"Retrieved {len(memories)} memories")
         except Exception as e:
             print(f"Memory retrieval error: {e}")
 
-        # Build context
-        memory_context = ""
+        # Build context string for state interpolation
         if memories:
-            memory_context = f"\nRelevant memories:\n" + "\n".join([f"- {m}" for m in memories])
+            state.memory_context = "Relevant memories:\n" + "\n".join([f"- {m}" for m in memories])
+        else:
+            state.memory_context = ""
 
-        # System prompt with memory
-        system_prompt = f"""You are a helpful AI assistant with memory of past conversations.
-        
-{memory_context}
+        return state
 
-Be conversational, helpful, and reference past interactions when relevant."""
+    async def _memory_storage_node(self, state: MemoryAgentState) -> MemoryAgentState:
+        """Store the interaction in long-term memory."""
+        if len(state.context) < 2:
+            return state
 
-        # Convert messages
-        messages = convert_messages(
-            system_prompts=[{"role": "system", "content": system_prompt}], state=state
-        )
+        user_message = state.context[-2]
+        ai_message = state.context[-1]
 
-        # Generate response
-        response = await acompletion(model="gemini/gemini-2.0-flash", messages=messages)
-
-        # Convert and store response
-        ai_response = ModelResponseConverter(response, converter="litellm")
-        # state.messages.append(Message.text_message(ai_response.message.content, role="assistant"))
-
-        # Store interaction in memory
         try:
             interaction = [
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": response.choices[0]["message"]["content"]},
+                {"role": "user", "content": user_message.content},
+                {"role": "assistant", "content": ai_message.content},
             ]
 
-            self.memory.add(messages=interaction, user_id=user_id, metadata={"app_id": self.app_id})
-            print(f"✅ Memory stored for user {user_id}")
+            self.memory.add(
+                messages=interaction, user_id=state.user_id, metadata={"app_id": self.app_id}
+            )
+            print(f"✅ Memory stored for user {state.user_id}")
         except Exception as e:
             print(f"Memory storage error: {e}")
 
-        return ai_response
+        return state
 
     async def chat(self, message: str, user_id: str) -> str:
         """Simple chat interface."""
-        # state = MemoryAgentState(
-        #     messages=[Message.text_message(message, role="user")],
-        #     user_id=user_id
-        # )
         inp = {
             "messages": [Message.text_message(message, role="user")],
-            "state": {"user_id": user_id},
         }
-        config1 = {"thread_id": "12345", "recursion_limit": 10}
-        result = await self.app.ainvoke(inp, config=config1)
-        return result["messages"][-1].content
+        config = {
+            "thread_id": user_id,
+            "recursion_limit": 10,
+            "user_id": user_id,
+        }
+        result = await self.app.ainvoke(inp, config=config)
+        return result["messages"][-1].text()
 
 
 # Example usage

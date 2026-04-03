@@ -1,17 +1,13 @@
 import logging
 import os
-from typing import Any
 
 from dotenv import load_dotenv
 from fastmcp import Client
-from litellm import acompletion
 
-from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.storage.checkpointer import InMemoryCheckpointer
-from agentflow.core.graph import StateGraph, ToolNode
+from agentflow.core import Agent, StateGraph, ToolNode
 from agentflow.core.state import AgentState, Message
+from agentflow.storage.checkpointer import InMemoryCheckpointer
 from agentflow.utils.constants import END
-from agentflow.utils.converter import convert_messages
 
 
 # Root logger: show INFO and above
@@ -31,10 +27,6 @@ checkpointer = InMemoryCheckpointer()
 
 config = {
     "mcpServers": {
-        # "weather": {
-        #     "url": "http://127.0.0.1:8000/mcp",
-        #     "transport": "streamable-http",
-        # },
         "github": {
             "url": "https://api.githubcopilot.com/mcp/",
             "headers": {"Authorization": f"Bearer {os.getenv('GITHUB_TOKEN')}"},
@@ -50,35 +42,21 @@ client_http = Client(config)
 tool_node = ToolNode(tools=[], client=client_http)
 
 
-async def main_agent(
-    state: AgentState,
-    config: dict[str, Any],
-    checkpointer: Any | None = None,
-    store: Any | None = None,
-):
-    prompts = """
-        You are a helpful assistant.
-        Your task is to assist the user in finding information and answering questions.
-    """
-
-    messages = convert_messages(
-        system_prompts=[{"role": "system", "content": prompts}],
-        state=state,
-    )
-
-    # Check if the last message is a tool result - if so, make final response without tools
-    tools = await tool_node.all_tools()
-    # print("**** List of tools", len(tools), tools)
-    print("**** List of tools", len(tools))
-    response = await acompletion(
-        model="gemini/gemini-2.0-flash",
-        messages=messages,
-        tools=tools,
-    )
-    return ModelResponseConverter(
-        response,
-        converter="litellm",
-    )
+main_agent = Agent(
+    model="gemini-2.0-flash",
+    provider="google",
+    system_prompt=[
+        {
+            "role": "system",
+            "content": """
+                You are a helpful assistant.
+                Your task is to assist the user in finding information and answering questions.
+            """,
+        },
+    ],
+    tools=tool_node,
+    trim_context=True,
+)
 
 
 def should_use_tools(state: AgentState) -> str:
@@ -135,9 +113,7 @@ inp = {
         )
     ]
 }
-# inp = {"messages": [Message.from_text("Please call the get_weather function for New York City")]}
 config = {"thread_id": "12345", "recursion_limit": 10}
-# todo pass data to state directly
 res = app.invoke(inp, config=config)
 
 for i in res["messages"]:

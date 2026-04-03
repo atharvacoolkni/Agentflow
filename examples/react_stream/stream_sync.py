@@ -1,12 +1,9 @@
 from dotenv import load_dotenv
-from litellm import completion
 
-from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.storage.checkpointer import InMemoryCheckpointer
-from agentflow.core.graph import StateGraph, ToolNode
+from agentflow.core import Agent, StateGraph, ToolNode
 from agentflow.core.state import AgentState, Message
+from agentflow.storage.checkpointer import InMemoryCheckpointer
 from agentflow.utils.constants import END
-from agentflow.utils.converter import convert_messages
 
 
 load_dotenv()
@@ -40,50 +37,22 @@ def get_weather(
 tool_node = ToolNode([get_weather])
 
 
-def main_agent(
-    state: AgentState,
-    config: dict | None = None,
-):
-    config = config or {}
-    prompts = """
-        You are a helpful assistant.
-        Your task is to assist the user in finding information and answering questions.
-    """
-
-    messages = convert_messages(
-        system_prompts=[
-            {
-                "role": "system",
-                "content": prompts,
-            },
-            {"role": "user", "content": "Today Date is 2024-06-15"},
-        ],
-        state=state,
-    )
-
-    mcp_tools = []
-
-    is_stream = config.get("is_stream", False)
-
-    # Check if the last message is a tool result - if so, make final response without tools
-    if state.context and len(state.context) > 0 and state.context[-1].role == "tool":
-        # Make final response without tools since we just got tool results
-        response = completion(
-            model="gemini/gemini-2.5-flash",
-            messages=messages,
-            stream=is_stream,
-        )
-    else:
-        # Regular response with tools available
-        tools = tool_node.all_tools_sync()
-        response = completion(
-            model="gemini/gemini-2.5-flash",
-            messages=messages,
-            tools=tools + mcp_tools,
-            stream=is_stream,
-        )
-
-    return ModelResponseConverter(response, converter="litellm")
+main_agent = Agent(
+    model="gemini-2.5-flash",
+    provider="google",
+    system_prompt=[
+        {
+            "role": "system",
+            "content": """
+                You are a helpful assistant.
+                Your task is to assist the user in finding information and answering questions.
+            """,
+        },
+        {"role": "user", "content": "Today Date is 2024-06-15"},
+    ],
+    tools=tool_node,
+    trim_context=True,
+)
 
 
 def should_use_tools(state: AgentState) -> str:
