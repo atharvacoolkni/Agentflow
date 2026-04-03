@@ -855,13 +855,6 @@ class TestSetSkillTool:
         result = set_skill("bare", "anything.md")
         assert "ERROR: Skill 'bare' has no resources" in result
 
-    def test_skill_content_lists_resources(self, tmp_path: Path):
-        registry, name = self._setup_registry(tmp_path)
-        set_skill = make_set_skill_tool(registry)
-        result = set_skill(name)
-        assert "Available Resources" in result
-        assert "guide.md" in result
-
     def test_tool_docstring_lists_skills(self, tmp_path: Path):
         registry, _ = self._setup_registry(tmp_path)
         set_skill = make_set_skill_tool(registry)

@@ -22,6 +22,12 @@ from agentflow.skills.models import SkillMeta
 logger = logging.getLogger("agentflow.skills.registry")
 
 
+def _sanitize_markdown_cell(value: str) -> str:
+    """Normalize whitespace and escape markdown table separators."""
+    collapsed = " ".join(value.replace("\r", "\n").split())
+    return collapsed.replace("|", "\\|")
+
+
 class SkillsRegistry:
     """Central registry that holds discovered :class:`SkillMeta` entries.
 
@@ -153,17 +159,30 @@ class SkillsRegistry:
 
         lines = [
             "## Available Skills\n",
-            "On EVERY user turn, check whether the request matches a skill below.\n"
-            "If it matches a skill, call `set_skill(skill_name)` before finalizing your answer.\n",
-            "| Skill | When to use |",
-            "|-------|-------------|",
+            "### How to Use Skills\n",
+            "When the user's request matches a skill:\n",
+            "1. Call `set_skill(skill_name)` to load the skill instructions\n",
+            "2. Read the loaded content — it may reference additional resources\n",
+            "3. If you need a specific resource mentioned in the skill, "
+            "call `set_skill(skill_name, resource_name)`\n",
+            "4. Then provide your answer using the loaded content\n",
+            "### Skills\n",
+            "| Skill | When to Use |\n",
+            "| --- | --- |\n",
         ]
         for meta in skills:
-            desc = meta.description
+            max_triggers_display = 4
             if meta.triggers:
-                desc = "; ".join(meta.triggers[:3])
-            safe_desc = desc.replace("|", "\\|").replace("\n", " ").strip()
-            lines.append(f"| `{meta.name}` | {safe_desc} |")
+                triggers_str = ", ".join(
+                    f'"{_sanitize_markdown_cell(trigger)}"'
+                    for trigger in meta.triggers[:max_triggers_display]
+                )
+                if len(meta.triggers) > max_triggers_display:
+                    triggers_str += f" (+{len(meta.triggers) - max_triggers_display} more)"
+            else:
+                triggers_str = _sanitize_markdown_cell(meta.description)
+
+            lines.append(f"| `{meta.name}` | {triggers_str} |")
 
         return "\n".join(lines)
 
