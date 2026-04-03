@@ -22,6 +22,12 @@ from agentflow.skills.models import SkillMeta
 logger = logging.getLogger("agentflow.skills.registry")
 
 
+def _sanitize_markdown_cell(value: str) -> str:
+    """Normalize whitespace and escape markdown table separators."""
+    collapsed = " ".join(value.replace("\r", "\n").split())
+    return collapsed.replace("|", "\\|")
+
+
 class SkillsRegistry:
     """Central registry that holds discovered :class:`SkillMeta` entries.
 
@@ -161,16 +167,22 @@ class SkillsRegistry:
             "call `set_skill(skill_name, resource_name)`\n",
             "4. Then provide your answer using the loaded content\n",
             "### Skills\n",
+            "| Skill | When to Use |\n",
+            "| --- | --- |\n",
         ]
         for meta in skills:
-            desc = meta.description
             max_triggers_display = 4
-            triggers_str = ", ".join(f'"{t}"' for t in meta.triggers[:max_triggers_display])
-            if len(meta.triggers) > max_triggers_display:
-                triggers_str += f" (+{len(meta.triggers) - max_triggers_display} more)"
+            if meta.triggers:
+                triggers_str = ", ".join(
+                    f'"{_sanitize_markdown_cell(trigger)}"'
+                    for trigger in meta.triggers[:max_triggers_display]
+                )
+                if len(meta.triggers) > max_triggers_display:
+                    triggers_str += f" (+{len(meta.triggers) - max_triggers_display} more)"
+            else:
+                triggers_str = _sanitize_markdown_cell(meta.description)
 
-            lines.append(f"**`{meta.name}`** — triggers: {triggers_str}")
-            lines.append("")
+            lines.append(f"| `{meta.name}` | {triggers_str} |")
 
         return "\n".join(lines)
 

@@ -95,8 +95,7 @@ def make_set_skill_tool(
             return f"ERROR: Skill '{skill_name}' found but content could not be loaded."
 
         header = skill_name.upper().replace("-", " ")
-        result = f"## SKILL: {header}\n\n{content}"
-        return result
+        return f"## SKILL: {header}\n\n{content}"
 
     # Patch the docstring so the LLM sees available skills
     set_skill.__doc__ = (
