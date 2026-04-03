@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from agentflow.state.message_block import ContentBlock
 
@@ -161,14 +161,7 @@ class EventModel(BaseModel):
         default_factory=dict, description="Optional metadata for consumers"
     )
 
-    class Config:
-        """Pydantic configuration for EventModel.
-
-        Attributes:
-            use_enum_values: Output enums as strings.
-        """
-
-        use_enum_values = True  # Output enums as strings
+    model_config = ConfigDict(use_enum_values=True)
 
     @classmethod
     def default(

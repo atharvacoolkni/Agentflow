@@ -13,6 +13,7 @@ import secrets
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable
 from typing import Any
+from uuid import uuid4
 
 from injectq import InjectQ
 
@@ -64,12 +65,12 @@ class BaseStore(ABC):
 
         Uses the ``generated_id`` factory bound in the InjectQ container
         (registered by ``StateGraph.compile()`` via ``BaseIDGenerator``). Falls
-        back to a ``secrets.token_hex`` value when the DI context is not
+        back to a ``uuid4`` value when the DI context is not
         available (e.g. in unit tests that don't compile a graph).
         """
         generated_id = InjectQ.get_instance().try_get("generated_id", None)
-        if generated_id is None:
-            return secrets.token_hex(16)
+        if not generated_id:
+            return str(uuid4())
         if isinstance(generated_id, Awaitable):
             generated_id = await generated_id
         return str(generated_id)

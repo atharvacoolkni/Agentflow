@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # Skill names must be slug-like: lowercase alphanumeric, hyphens, underscores.
@@ -36,8 +36,7 @@ class SkillMeta(BaseModel):
     skill_dir: str = ""
     skill_file: str = ""
 
-    class Config:
-        frozen = False
+    model_config = ConfigDict(frozen=False)
 
     @field_validator("name")
     @classmethod

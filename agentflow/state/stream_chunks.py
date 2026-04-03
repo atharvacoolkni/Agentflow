@@ -13,7 +13,7 @@ Classes:
 import enum
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .agent_state import AgentState
 from .message import Message
@@ -56,11 +56,4 @@ class StreamChunk(BaseModel):
         description="UNIX timestamp of when chunk was created",
     )
 
-    class Config:
-        """Pydantic configuration for EventModel.
-
-        Attributes:
-            use_enum_values: Output enums as strings.
-        """
-
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
