@@ -17,7 +17,7 @@ from uuid import uuid4
 from dotenv import load_dotenv
 
 from agentflow.core.graph import Agent, StateGraph
-from agentflow.graph.skills import SkillConfig
+from agentflow.core.skills import SkillConfig
 from agentflow.core.state import AgentState, Message
 from agentflow.core.state.message_context_manager import MessageContextManager
 from agentflow.utils.constants import END

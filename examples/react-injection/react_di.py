@@ -3,7 +3,7 @@ from injectq import Inject, InjectQ
 
 from agentflow.core.graph import StateGraph, ToolNode
 from agentflow.core.state import AgentState, Message
-from agentflow.core.state.message_block import TextBlock, ToolCallBlock
+from agentflow.core.state.message_block import TextBlock, ToolCallBlock, ToolResultBlock
 from agentflow.storage.checkpointer import InMemoryCheckpointer
 from agentflow.storage.store.base_store import BaseStore
 from agentflow.utils.callbacks import CallbackManager
@@ -42,8 +42,13 @@ def get_weather(
 
     res = f"The weather in {location} is sunny"
     return Message.tool_message(
-        content=res,
-        tool_call_id=tool_call_id,  # type: ignore
+        content=[
+            ToolResultBlock(
+                call_id=tool_call_id,
+                output=res,
+                status="completed",
+            )
+        ],
     )
 
 
@@ -76,16 +81,19 @@ async def main_agent(
                 TextBlock(text="This is example final response from main agent."),
                 ToolCallBlock(
                     id="weather-tool-123",
-                    tool_name="get_weather",  # type: ignore
+                    name="get_weather",
                     args={"location": "San Francisco"},
                 ),
             ],
             role="assistant",
             tools_calls=[
                 {
-                    "name": "get_weather",
-                    "tool_call_id": "weather-tool-123",
-                    "arguments": {"location": "San Francisco"},
+                    "id": "weather-tool-123",
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "arguments": '{"location": "San Francisco"}',
+                    },
                 }
             ],
         )

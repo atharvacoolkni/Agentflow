@@ -1,4 +1,3 @@
-from dataclasses import dataclass, field
 from typing import Any
 
 from dotenv import load_dotenv
@@ -13,14 +12,13 @@ from agentflow.utils.constants import END
 load_dotenv()
 
 
-@dataclass
 class MyState(AgentState):
     """Custom state with additional fields for resume matching."""
 
     candidate_cv: str = ""
-    jd: str = ""  # job description
+    jd: str = ""
     match_score: float = 0.0
-    analysis_results: dict = field(default_factory=dict)
+    analysis_results: dict[str, Any] = {}
 
 
 # Create checkpointer with custom state type
@@ -147,17 +145,15 @@ def test_partial_state_update():
 
     # After invoke, check that only 'jd' changed in the returned state
     updated_state = res["state"]
-    print("Returned state keys:", list(updated_state.keys()))
-    print("Returned state dict:", updated_state)
-    assert "jd" in updated_state, f"Returned state missing 'jd': {updated_state}"
-    assert updated_state["jd"] == partial_update["jd"], (
-        f"JD should be updated, got {updated_state.get('jd')}"
-    )
-    assert updated_state["candidate_cv"] == old_cv, "CV should remain unchanged"
-    assert updated_state["match_score"] == old_score, "Score should remain unchanged"
-    assert updated_state["analysis_results"] == old_analysis, (
-        "Analysis results should remain unchanged"
-    )
+    print("Returned state keys:", list(updated_state.model_dump().keys()))
+    print("Returned state dict:", updated_state.model_dump())
+    assert hasattr(updated_state, "jd"), f"Returned state missing 'jd': {updated_state}"
+    assert updated_state.jd == partial_update["jd"], f"JD should be updated, got {updated_state.jd}"
+    assert updated_state.candidate_cv == old_cv, "CV should remain unchanged"
+    assert updated_state.match_score == old_score, "Score should remain unchanged"
+    assert (
+        updated_state.analysis_results == old_analysis
+    ), "Analysis results should remain unchanged"
     print("Partial state update test passed!")
     return res
 

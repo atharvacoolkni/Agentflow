@@ -28,6 +28,7 @@ from injectq import Inject
 from agentflow.core.state import AgentState, ExecutionStatus, Message
 from agentflow.core.state.base_context import BaseContextManager
 from agentflow.core.state.execution_state import ExecutionState as ExecMeta
+from agentflow.core.state.execution_state import StopRequestStatus
 from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
 from agentflow.storage.checkpointer import BaseCheckpointer
 from agentflow.utils import (
@@ -185,6 +186,19 @@ async def load_or_create_state[StateT: AgentState](  # noqa: PLR0912, PLR0915
             elif existing_state.execution_meta.current_node == "__end__":
                 existing_state.execution_meta.current_node = END
                 logger.debug("Normalized legacy current_node '__end__' to '%s'", END)
+
+            # Reset execution if graph previously completed (current_node == END)
+            # This allows multi-turn conversations to continue from a completed state
+            if existing_state.execution_meta.current_node == END:
+                logger.info(
+                    "Resetting completed state for multi-turn continuation (was at END, step=%d)",
+                    existing_state.execution_meta.step,
+                )
+                existing_state.execution_meta.current_node = START
+                existing_state.execution_meta.step = 0
+                existing_state.execution_meta.status = ExecutionStatus.RUNNING
+                existing_state.execution_meta.clear_interrupt()
+                existing_state.execution_meta.stop_current_execution = StopRequestStatus.NONE
             # Merge new messages with existing context
             new_messages = input_data.get("messages", [])
             if new_messages:
