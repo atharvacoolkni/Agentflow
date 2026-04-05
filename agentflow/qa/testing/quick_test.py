@@ -131,7 +131,7 @@ class QuickTest:
         # Each turn: user message + agent response
         all_messages = []
         result = {}
-        for i, (user_msg, _) in enumerate(conversation):
+        for _i, (user_msg, _) in enumerate(conversation):
             # Add user message
             all_messages.append(Message.text_message(user_msg, role="user"))
 
