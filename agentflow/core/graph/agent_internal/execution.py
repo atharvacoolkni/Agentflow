@@ -340,7 +340,7 @@ class AgentExecutionMixin:
         converter_key = self._get_converter_key()
         return ModelResponseConverter(response, converter=converter_key)
 
-    async def _resolve_media_in_messages(
+    async def _resolve_media_in_messages(  # noqa: PLR0915, PLR0912
         self,
         messages: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:

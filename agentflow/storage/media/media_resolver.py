@@ -195,7 +195,7 @@ class MediaResolver:
 
         return None
 
-    async def _transport_provider_file(
+    async def _transport_provider_file(  # noqa: PLR0911
         self,
         ref: MediaRef,
         provider: str,
@@ -253,12 +253,11 @@ class MediaResolver:
         """Fetch an external URL and return (bytes, mime_type)."""
         import aiohttp
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                resp.raise_for_status()
-                data = await resp.read()
-                mime = resp.headers.get("Content-Type", "application/octet-stream")
-                return data, mime
+        async with aiohttp.ClientSession() as session, session.get(url) as resp:
+            resp.raise_for_status()
+            data = await resp.read()
+            mime = resp.headers.get("Content-Type", "application/octet-stream")
+            return data, mime
 
     async def _retrieve(self, agentflow_url: str) -> tuple[bytes, str]:
         """Retrieve bytes from the media store for an internal URL."""
@@ -284,7 +283,7 @@ class MediaResolver:
             if isinstance(payload, dict):
                 url = payload.get("url")
                 expires_at = payload.get("expires_at")
-                if isinstance(url, str) and isinstance(expires_at, (int, float)):
+                if isinstance(url, str) and isinstance(expires_at, int | float):
                     import time
 
                     if expires_at > time.time() + 60:

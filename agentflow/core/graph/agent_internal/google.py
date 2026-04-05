@@ -196,7 +196,7 @@ class AgentGoogleMixin:
         try:
             import urllib.request
 
-            with urllib.request.urlopen(url, timeout=10) as resp:
+            with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310  # nosec B310
                 raw = resp.read()
                 mime = resp.headers.get("Content-Type", "image/jpeg")
                 return [types.Part.from_bytes(data=raw, mime_type=mime)]
@@ -265,7 +265,7 @@ class AgentGoogleMixin:
             try:
                 import urllib.request
 
-                with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+                with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310  # nosec B310
                     raw = resp.read()
                     return [types.Part.from_bytes(data=raw, mime_type=mime)]
             except Exception:

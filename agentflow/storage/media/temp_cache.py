@@ -13,8 +13,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
+
 
 logger = logging.getLogger("agentflow.media.temp_cache")
 
@@ -155,7 +156,9 @@ class TemporaryMediaCache:
         self._index[index_key] = entry
         logger.debug(
             "Stored temp cache entry: url=%s, key=%s, ttl=%ds",
-            source_url, index_key, self.ttl_seconds,
+            source_url,
+            index_key,
+            self.ttl_seconds,
         )
         return entry
 
@@ -210,7 +213,7 @@ class TemporaryMediaCache:
         Returns:
             Number of entries cleaned up.
         """
-        expired = await self.list_expired(checkpointer)
+        await self.list_expired(checkpointer)
         count = 0
 
         for key, entry in list(self._index.items()):
@@ -272,11 +275,10 @@ async def fetch_and_cache(
     """
     import aiohttp
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            resp.raise_for_status()
-            data = await resp.read()
-            mime_type = resp.headers.get("Content-Type", "application/octet-stream")
+    async with aiohttp.ClientSession() as session, session.get(url) as resp:
+        resp.raise_for_status()
+        data = await resp.read()
+        mime_type = resp.headers.get("Content-Type", "application/octet-stream")
 
     # Compute content hash
     content_hash = _content_hash(data)
@@ -290,7 +292,7 @@ async def fetch_and_cache(
             stored_data, stored_mime = await media_store.retrieve(existing.storage_key)
             return stored_data, stored_mime, existing.storage_key
         except Exception:
-            pass  # Fall through to re-store
+            logger.debug("Failed to retrieve existing cached media, will re-store")
 
     # Store in media store
     storage_key = _storage_key(content_hash, mime_type)
