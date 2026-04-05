@@ -185,6 +185,18 @@ async def load_or_create_state[StateT: AgentState](  # noqa: PLR0912, PLR0915
             elif existing_state.execution_meta.current_node == "__end__":
                 existing_state.execution_meta.current_node = END
                 logger.debug("Normalized legacy current_node '__end__' to '%s'", END)
+
+            # Reset execution if graph previously completed (current_node == END)
+            # This allows multi-turn conversations to continue from a completed state
+            if existing_state.execution_meta.current_node == END:
+                logger.info(
+                    "Resetting completed state for multi-turn continuation (was at END, step=%d)",
+                    existing_state.execution_meta.step,
+                )
+                existing_state.execution_meta.current_node = START
+                existing_state.execution_meta.step = 0
+                existing_state.execution_meta.is_complete = False
+                existing_state.execution_meta.stop_current_execution = None
             # Merge new messages with existing context
             new_messages = input_data.get("messages", [])
             if new_messages:

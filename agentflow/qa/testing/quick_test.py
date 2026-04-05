@@ -8,6 +8,7 @@ from typing import Any
 
 from agentflow.core.graph import StateGraph
 from agentflow.core.state import Message
+from agentflow.utils import ResponseGranularity
 from agentflow.utils.constants import END
 
 from .test_agent import TestAgent
@@ -115,10 +116,10 @@ class QuickTest:
         # Extract responses
         responses = [response for _, response in conversation]
 
-        # Create test agent
+        # Create test agent with all responses
         agent = TestAgent(model=model, responses=responses)
 
-        # Build graph
+        # Build graph without checkpointer - we'll manage state manually
         graph = StateGraph()
         graph.add_node("MAIN", agent)
         graph.set_entry_point("MAIN")
@@ -126,26 +127,34 @@ class QuickTest:
 
         compiled = graph.compile()
 
+        # Simulate multi-turn by accumulating messages and re-invoking
+        # Each turn: user message + agent response
+        all_messages = []
         result = {}
+        for i, (user_msg, _) in enumerate(conversation):
+            # Add user message
+            all_messages.append(Message.text_message(user_msg, role="user"))
 
-        # Run each turn
-        messages = []
-        for user_msg, _ in conversation:
-            messages.append(Message.text_message(user_msg, role="user"))
-
+            # Run the graph with all accumulated messages
             result = await compiled.ainvoke(
-                {"messages": messages},
+                {"messages": all_messages},
                 config=config or {},
+                response_granularity=ResponseGranularity.FULL,
             )
 
-            messages = result.get("messages", [])
+            # Get full state context which contains all accumulated messages
+            state = result.get("state")
+            if state and hasattr(state, "context"):
+                all_messages = state.context
+            else:
+                all_messages = result.get("messages", [])
 
         # Extract final response
         final_response = cls._extract_response(result)
 
         return TestResult(
             final_response=final_response,
-            messages=messages,
+            messages=all_messages,
             tool_calls=[],
             state=result,
         )
@@ -213,14 +222,21 @@ class QuickTest:
         graph.add_node("TOOL", tool_node)
         graph.set_entry_point("MAIN")
 
-        # Simple routing: MAIN -> END (tools handled internally by TestAgent)
-        graph.add_edge("MAIN", END)
+        # Add tool routing: MAIN -> TOOL -> MAIN
+        def route_after_main(state):
+            last_message = state.context[-1] if state.context else None
+            if last_message and hasattr(last_message, "tools_calls") and last_message.tools_calls:
+                return "TOOL"
+            return END
+
+        graph.add_conditional_edges("MAIN", route_after_main, {"TOOL": "TOOL", END: END})
+        graph.add_edge("TOOL", "MAIN")
 
         compiled = graph.compile()
 
         result = await compiled.ainvoke(
             {"messages": [Message.text_message(query)]},
-            config=config or {},
+            config={"recursion_limit": 10, **(config or {})},
         )
 
         final_response = cls._extract_response(result)

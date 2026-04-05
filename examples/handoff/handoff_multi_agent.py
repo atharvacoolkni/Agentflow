@@ -103,7 +103,7 @@ writer_tools = ToolNode(
 # ============================================================================
 
 coordinator_agent = Agent(
-    model="gemini-2.0-flash-exp",
+    model="gemini-2.5-flash",
     provider="google",
     system_prompt=[
         {
@@ -125,7 +125,7 @@ coordinator_agent = Agent(
 )
 
 researcher_agent = Agent(
-    model="gemini-2.0-flash-exp",
+    model="gemini-2.5-flash",
     provider="google",
     system_prompt=[
         {
@@ -146,7 +146,7 @@ researcher_agent = Agent(
 )
 
 writer_agent = Agent(
-    model="gemini-2.0-flash-exp",
+    model="gemini-2.5-flash",
     provider="google",
     system_prompt=[
         {

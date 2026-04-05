@@ -5,12 +5,15 @@ production Agent in tests, allowing for predictable and controlled testing
 without making actual LLM API calls.
 """
 
+import json
 import logging
+import uuid
 from typing import Any
 
 from agentflow.core.graph.base_agent import BaseAgent
 from agentflow.core.state import AgentState
 from agentflow.core.state.message import Message
+from agentflow.core.state.message_block import ToolCallBlock
 from agentflow.runtime.adapters.llm.base_converter import BaseConverter
 from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
 from agentflow.utils.converter import convert_messages
@@ -22,22 +25,46 @@ logger = logging.getLogger("agentflow.testing")
 class MockLLMResponse:
     """Mock response object used by TestAgent."""
 
-    def __init__(self, content: str, test_id: str = "test-response"):
+    def __init__(
+        self, content: str, test_id: str = "test-response", tools_calls: list | None = None
+    ):
         """Initialize mock response.
 
         Args:
             content: The text content of the response
             id: Response ID (default: "test-response")
+            tools_calls: Optional list of tool calls to include in response
         """
         self.id = test_id
         self.content = content
+        self.tools_calls = tools_calls
 
 
 class _TestAgentConverter(BaseConverter):
     """Convert TestAgent mock responses into assistant messages."""
 
     async def convert_response(self, response: MockLLMResponse) -> Message:
-        return Message.text_message(response.content, role="assistant")
+        msg = Message.text_message(response.content, role="assistant")
+        if response.tools_calls:
+            msg.tools_calls = response.tools_calls
+            # Also add ToolCallBlock to content
+            for tc in response.tools_calls:
+                func_info = tc.get("function", {})
+                args = func_info.get("arguments", {})
+                # Parse JSON string args if needed
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
+                msg.content.append(
+                    ToolCallBlock(
+                        id=tc.get("id", str(uuid.uuid4())),
+                        name=func_info.get("name", ""),
+                        args=args,
+                    )
+                )
+        return msg
 
     async def convert_streaming_response(
         self,
@@ -82,6 +109,7 @@ class TestAgent(BaseAgent):
         system_prompt: list[dict[str, Any]] | None = None,
         responses: list[str] | None = None,
         tools: list | None = None,
+        simulate_tool_calls: bool = False,
         **kwargs: Any,
     ):
         """Initialize a TestAgent.
@@ -92,6 +120,7 @@ class TestAgent(BaseAgent):
             responses: List of predefined responses to return. Cycles through
                 the list on subsequent calls. Defaults to ["Test response"].
             tools: Optional tool configuration (for compatibility)
+            simulate_tool_calls: If True, first call returns tool calls, second returns response
             **kwargs: Additional configuration parameters
         """
         super().__init__(
@@ -103,6 +132,8 @@ class TestAgent(BaseAgent):
         self.responses = responses or ["Test response"]
         self.call_count = 0
         self.call_history: list[dict[str, Any]] = []
+        self.simulate_tool_calls = simulate_tool_calls or (tools is not None and len(tools) > 0)
+        self._tools_config = tools
 
     async def _call_llm(
         self,
@@ -115,6 +146,10 @@ class TestAgent(BaseAgent):
         This method simulates an LLM response by returning a predefined
         response from the responses list, cycling through if multiple
         calls are made.
+
+        If simulate_tool_calls is True and tools are configured, the first
+        call will return tool calls, and subsequent calls will return the
+        actual response.
 
         Args:
             messages: List of message dicts (recorded for assertions)
@@ -132,6 +167,31 @@ class TestAgent(BaseAgent):
                 "kwargs": kwargs,
             }
         )
+
+        # Check if we should simulate tool calls
+        if self.simulate_tool_calls and self._tools_config and self.call_count == 1:
+            # First call: return tool calls
+            tools_calls = []
+            for i, tool in enumerate(self._tools_config):
+                tool_name = (
+                    tool if isinstance(tool, str) else getattr(tool, "__name__", f"tool_{i}")
+                )
+                tool_call = {
+                    "id": f"tool-call-{i}",
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": json.dumps({"query": "test query"}),
+                    },
+                }
+                tools_calls.append(tool_call)
+
+            logger.debug("TestAgent returning tool calls on first call")
+            return MockLLMResponse(
+                content="",
+                test_id=f"test-response-{self.call_count}",
+                tools_calls=tools_calls,
+            )
 
         # Get next response (cycles through list)
         idx = (self.call_count - 1) % len(self.responses)
