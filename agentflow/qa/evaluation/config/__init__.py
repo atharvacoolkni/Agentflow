@@ -5,7 +5,6 @@ Provides configuration models and presets for agent evaluation.
 
 Example:
     ```python
-    # All old imports still work unchanged
     from agentflow.evaluation.config import EvalConfig, CriterionConfig
     from agentflow.evaluation.config import EvalPresets, MatchType, Rubric
 
