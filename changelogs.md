@@ -1,6 +1,9 @@
-Version 0.6.3 later
-1. Introduced ToolResult for Tool Result
-this way you can update state and also return the result of the tool execution in one step, and it will be used in the next step of the agent execution
+Version 0.7.0 later
+1. MultiModal Support for Agents
+2. Reasoning Configuration for Agents
+3. Memory Management for Agents
+4. Skills management for Agents
+5. Added A2A Protocol for Agent Communication
 
 
 Version: 0.6.1 later
