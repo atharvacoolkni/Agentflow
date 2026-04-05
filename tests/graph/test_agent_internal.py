@@ -960,20 +960,21 @@ class TestCallGoogle:
 class TestSetupTools:
     def test_none_returns_none(self):
         agent = _make_openai_agent()
-        agent.tools = None
+        agent.tool_node = None
         assert agent._setup_tools() is None
 
     def test_tool_node_instance_returned_as_is(self):
         agent = _make_openai_agent()
         tn = ToolNode([lambda x: x])
-        agent.tools = tn
+        agent.tool_node = tn
         assert agent._setup_tools() is tn
 
-    def test_list_of_callables_converted_to_tool_node(self):
+    def test_str_sets_tool_node_name_returns_none(self):
         agent = _make_openai_agent()
-        agent.tools = [lambda x: x]
+        agent.tool_node = "TOOL"
         result = agent._setup_tools()
-        assert isinstance(result, ToolNode)
+        assert result is None
+        assert agent.tool_node_name == "TOOL"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1063,24 +1064,19 @@ class TestResolveTools:
             """A test tool."""
             return x
 
-        agent = _make_openai_agent(tools=[my_tool])
+        agent = _make_openai_agent(tool_node=ToolNode([my_tool]))
         from injectq import InjectQ
         result = await agent._resolve_tools(InjectQ.get_instance())
         assert isinstance(result, list)
         assert len(result) > 0
 
-    async def test_named_node_not_found_returns_inline_tools(self):
-        def my_tool(x: str) -> str:
-            """A test tool."""
-            return x
-
-        agent = _make_openai_agent(tools=[my_tool], tool_node_name="nonexistent_node")
+    async def test_named_node_not_found_returns_empty(self):
+        agent = _make_openai_agent(tool_node="nonexistent_node")
         from injectq import InjectQ
-        # Should fall back to inline tools without raising
+        # Named node not in registry → returns empty list, no raise
         result = await agent._resolve_tools(InjectQ.get_instance())
         assert isinstance(result, list)
-        # Inline tool is still returned even though named node is missing
-        assert len(result) > 0
+        assert len(result) == 0
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1163,9 +1159,10 @@ class TestAgentInit:
 
     # ── misc attributes ────────────────────────────────────────────────────
 
-    def test_tool_node_name_stored(self):
-        agent = _make_openai_agent(tool_node_name="my_tools")
+    def test_tool_node_str_sets_tool_node_name(self):
+        agent = _make_openai_agent(tool_node="my_tools")
         assert agent.tool_node_name == "my_tools"
+        assert agent._tool_node is None
 
     def test_extra_messages_stored(self):
         msg = Message.text_message("hi", role="user")
@@ -1176,19 +1173,13 @@ class TestAgentInit:
         agent = _make_openai_agent(trim_context=True)
         assert agent.trim_context is True
 
-    def test_tools_list_creates_internal_tool_node(self):
-        def my_tool(x: str) -> str:
-            """tool."""
-            return x
-
-        agent = _make_openai_agent(tools=[my_tool])
-        assert isinstance(agent._tool_node, ToolNode)
-
-    def test_tools_none_gives_none_internal_tool_node(self):
-        agent = _make_openai_agent(tools=None)
-        assert agent._tool_node is None
-
-    def test_tools_tool_node_instance_reused(self):
+    def test_tool_node_instance_stored(self):
         tn = ToolNode([lambda x: x])
-        agent = _make_openai_agent(tools=tn)
+        agent = _make_openai_agent(tool_node=tn)
         assert agent._tool_node is tn
+        assert agent.tool_node_name is None
+
+    def test_tool_node_none_gives_none_internal_tool_node(self):
+        agent = _make_openai_agent(tool_node=None)
+        assert agent._tool_node is None
+        assert agent.tool_node_name is None

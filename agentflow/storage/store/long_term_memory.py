@@ -59,7 +59,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal
 
 from injectq import Inject, InjectQ
@@ -80,7 +80,7 @@ logger = logging.getLogger("agentflow.store.long_term_memory")
 _VALID_MEMORY_TYPES = {m.value for m in MemoryType}
 
 
-class ReadMode(str, Enum):
+class ReadMode(StrEnum):
     NO_RETRIEVAL = "no_retrieval"
     PRELOAD = "preload"
     POSTLOAD = "postload"

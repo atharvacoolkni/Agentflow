@@ -120,7 +120,7 @@ coordinator_agent = Agent(
             """,
         },
     ],
-    tool_node_name="COORDINATOR_TOOLS",
+    tool_node="COORDINATOR_TOOLS",
     trim_context=True,
 )
 
@@ -141,7 +141,7 @@ researcher_agent = Agent(
             """,
         },
     ],
-    tool_node_name="RESEARCHER_TOOLS",
+    tool_node="RESEARCHER_TOOLS",
     trim_context=True,
 )
 
@@ -161,7 +161,7 @@ writer_agent = Agent(
             """,
         },
     ],
-    tool_node_name="WRITER_TOOLS",
+    tool_node="WRITER_TOOLS",
     trim_context=True,
 )
 

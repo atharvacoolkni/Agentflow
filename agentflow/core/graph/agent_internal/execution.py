@@ -28,31 +28,25 @@ class AgentExecutionMixin:
     """Execution flow, tool resolution, and provider dispatch helpers."""
 
     def _setup_tools(self) -> ToolNode | None:
-        """Normalize the tools input to a ToolNode instance."""
-        if self.tools is None:
-            logger.debug("No tools provided")
+        """Normalize the tool_node input and wire internal state.
+
+        - ``ToolNode`` → stored as ``self._tool_node``; ``tool_node_name`` remains ``None``.
+        - ``str``     → stored as ``self.tool_node_name`` for lazy lookup via the DI
+                        container at execution time; returns ``None``.
+        - ``None``    → no tools; both attributes remain ``None``.
+        """
+        tn = self.tool_node  # str | ToolNode | None
+        if tn is None:
+            logger.debug("No tool_node provided")
             return None
 
-        if isinstance(self.tools, ToolNode):
-            logger.debug("Tools already a ToolNode instance")
-            return self.tools
+        if isinstance(tn, str):
+            logger.debug("tool_node is a named graph-node reference: '%s'", tn)
+            self.tool_node_name = tn
+            return None
 
-        logger.debug("Converting %d tool functions to ToolNode", len(self.tools))
-        return ToolNode(self.tools)
-
-    def get_tool_node(self) -> ToolNode | None:
-        """Return the agent's internal ToolNode.
-
-        Use this public method instead of accessing ``agent._tool_node``
-        directly when wiring the tool node into the graph. When skills are
-        enabled, the returned ToolNode already contains the ``set_skill`` tool.
-
-        Example::
-
-            agent = Agent(model="gpt-4o", tools=[my_tool], skills=SkillConfig(...))
-            graph.add_node("TOOL", agent.get_tool_node())
-        """
-        return self._tool_node
+        logger.debug("tool_node is a ToolNode instance")
+        return tn
 
     async def _trim_context(
         self,
