@@ -507,6 +507,7 @@ class TestGoogleMultimodalConversion:
         assert result.parts[1].inline_data.mime_type == "image/png"
 
     def test_list_content_with_url_image(self):
+        """External https:// URLs are fetched and converted to inline bytes."""
         mixin = self._make_mixin()
         content = [
             {
@@ -514,12 +515,20 @@ class TestGoogleMultimodalConversion:
                 "image_url": {"url": "https://example.com/image.jpg"},
             },
         ]
-        result = mixin._handle_regular_message(content, "user")
-        assert result.role == "user"
-        assert len(result.parts) == 1
-        # from_uri creates a FileData part
-        assert result.parts[0].file_data is not None
-        assert result.parts[0].file_data.file_uri == "https://example.com/image.jpg"
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_response = MagicMock()
+            mock_response.read.return_value = b"fake-image-data"
+            mock_response.headers.get.return_value = "image/jpeg"
+            mock_response.__enter__ = MagicMock(return_value=mock_response)
+            mock_response.__exit__ = MagicMock(return_value=False)
+            mock_urlopen.return_value = mock_response
+
+            result = mixin._handle_regular_message(content, "user")
+            assert result.role == "user"
+            assert len(result.parts) == 1
+            # External URLs are now fetched and converted to inline bytes
+            assert result.parts[0].inline_data is not None
+            assert result.parts[0].inline_data.mime_type == "image/jpeg"
 
     def test_list_content_with_audio(self):
         raw_bytes = b"\x00\x01\x02\x03"

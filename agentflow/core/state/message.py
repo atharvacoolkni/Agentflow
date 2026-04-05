@@ -136,7 +136,7 @@ class Message(BaseModel):
     Attributes:
         message_id (str | int): Unique identifier for the message.
         role (Literal["user", "assistant", "system", "tool"]): The role of the message sender.
-        content (list[ContentBlock]): The message content blocks.
+        content (Sequence[ContentBlock]): The message content blocks.
         delta (bool): Indicates if this is a delta/partial message.
         tools_calls (list[dict[str, Any]] | None): Tool call information, if any.
         reasoning (str | None): Reasoning or explanation, if any.
@@ -152,7 +152,7 @@ class Message(BaseModel):
 
     message_id: str | int = Field(default_factory=lambda: generate_id(None))
     role: Literal["user", "assistant", "system", "tool"]
-    content: list[ContentBlock]
+    content: Sequence[ContentBlock]
     delta: bool = False  # Indicates if this is a delta/partial message
     tools_calls: list[dict[str, Any]] | None = None
     reasoning: str | None = None  # Remove it
@@ -193,7 +193,7 @@ class Message(BaseModel):
     @classmethod
     def tool_message(
         cls,
-        content: list[ContentBlock],
+        content: Sequence[ContentBlock],
         message_id: str | None = None,
         meta: dict[str, Any] | None = None,
     ) -> Message:
@@ -201,7 +201,7 @@ class Message(BaseModel):
         Create a tool message, optionally marking it as an error.
 
         Args:
-            content (list[ContentBlock]): The message content blocks.
+        content (Sequence[ContentBlock]): The message content blocks.
             message_id (str | None): Optional message ID.
             meta (dict[str, Any] | None): Optional metadata.
 

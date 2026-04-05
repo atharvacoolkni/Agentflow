@@ -340,32 +340,6 @@ class StateGraph[StateT: AgentState]:
             consistent results for the same state. If using path_map, ensure the
             condition's return values match the map keys exactly.
         """
-        """Add conditional edges from a node based on a condition function.
-
-        Creates edges that are traversed based on the result of a condition
-        function. The condition function receives the current state and should
-        return a value that determines which edge to follow.
-
-        Args:
-            from_node: Name of the source node.
-            condition: Function that evaluates the current state and returns
-                a value to determine the next node.
-            path_map: Optional mapping from condition results to target nodes.
-                If provided, creates multiple conditional edges. If None,
-                creates a single conditional edge.
-
-        Returns:
-            StateGraph: The graph instance for method chaining.
-
-        Example:
-            >>> def route_condition(state):
-            ...     return "success" if state.success else "failure"
-            >>> graph.add_conditional_edges(
-            ...     "processor",
-            ...     route_condition,
-            ...     {"success": "next_step", "failure": "error_handler"},
-            ... )
-        """
         # Create edges based on possible returns from condition function
         logger.debug(
             "Node '%s' adding conditional edges with path_map: %s",

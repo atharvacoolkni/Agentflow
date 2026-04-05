@@ -188,7 +188,21 @@ class AgentGoogleMixin:
             raw = base64.b64decode(b64_data)
             return [types.Part.from_bytes(data=raw, mime_type=mime)]
 
-        return [types.Part.from_uri(file_uri=url, mime_type="image/jpeg")]
+        if url.startswith("gs://"):
+            return [types.Part.from_uri(file_uri=url, mime_type="image/jpeg")]
+
+        # Google does not accept arbitrary external https:// URLs via Part.from_uri.
+        # Fetch the image bytes and use Part.from_bytes instead.
+        try:
+            import urllib.request
+
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                raw = resp.read()
+                mime = resp.headers.get("Content-Type", "image/jpeg")
+                return [types.Part.from_bytes(data=raw, mime_type=mime)]
+        except Exception:
+            logger.warning("Failed to fetch external image URL for Google: %s", url)
+            return [types.Part(text="[Failed to load image]")]
 
     def _audio_part_to_google(self, part: dict[str, Any], types: Any) -> list[Any]:
         audio_info = part.get("input_audio", {})
@@ -243,7 +257,20 @@ class AgentGoogleMixin:
 
         url = media_info.get("url")
         if url:
-            return [types.Part.from_uri(file_uri=url, mime_type=mime)]
+            # Google does not accept arbitrary external https:// URLs via Part.from_uri.
+            # Only gs:// URIs are safe to pass through.
+            if url.startswith("gs://"):
+                return [types.Part.from_uri(file_uri=url, mime_type=mime)]
+
+            try:
+                import urllib.request
+
+                with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+                    raw = resp.read()
+                    return [types.Part.from_bytes(data=raw, mime_type=mime)]
+            except Exception:
+                logger.warning("Failed to fetch external media URL for Google: %s", url)
+                return [types.Part(text="[Failed to load media]")]
 
         return []
 

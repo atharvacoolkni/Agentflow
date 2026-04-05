@@ -261,7 +261,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Returns:
             Pool: PostgreSQL connection pool.
         """
-        """Get PostgreSQL pool, creating it if necessary."""
         if self._pg_pool is None:
             config = self._pg_pool_config
             self._pg_pool = await self._create_pg_pool(
@@ -279,7 +278,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Returns:
             str: Corresponding SQL type.
         """
-        """Get SQL type for given configuration type."""
         return ID_TYPE_MAP.get(type_name, "VARCHAR(255)")
 
     def _get_json_serializer(self):
@@ -309,7 +307,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Returns:
             list[str]: List of SQL statements for table creation.
         """
-        """Build SQL statements for table creation with dynamic ID types."""
         thread_id_type = self._get_sql_type(self.id_type)
         user_id_type = self._get_sql_type(self.user_id_type)
         message_id_type = self._get_sql_type(self.id_type)
@@ -431,7 +428,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Returns:
             None
         """
-        """Initialize database schema if not already done."""
         if self._schema_initialized:
             return
 
@@ -468,7 +464,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Returns:
             Any: True if setup completed.
         """
-        """Async setup method - initializes database schema."""
         logger.info(
             "Setting up PgCheckpointer (async)",
             extra={
@@ -498,7 +493,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Raises:
             ValueError: If required fields are missing.
         """
-        """Extract and validate thread_id and user_id from config."""
         thread_id = config.get("thread_id")
         user_id = config.get("user_id")
         if not user_id:
@@ -798,7 +792,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Raises:
             Exception: If retrieval fails.
         """
-        """Retrieve state from PostgreSQL."""
         # Ensure schema is initialized before accessing tables
         thread_id, user_id = self._validate_config(config)
 
@@ -850,7 +843,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Raises:
             Exception: If clearing fails.
         """
-        """Clear state from PostgreSQL and Redis cache."""
         # Ensure schema is initialized before accessing tables
         thread_id, user_id = self._validate_config(config)
 
@@ -888,7 +880,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Returns:
             Any | None: True if cached, None if failed.
         """
-        """Cache state in Redis with TTL."""
         # No DB access, but keep consistent
         thread_id, user_id = self._validate_config(config)
 
@@ -918,7 +909,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Returns:
             StateT | None: State object or None.
         """
-        """Get state from Redis cache, fallback to PostgreSQL if miss."""
         # Schema might be needed if we fall back to DB
         thread_id, user_id = self._validate_config(config)
 
@@ -998,6 +988,39 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
                 e,
             )
             return None
+
+    async def alist_cache_keys(
+        self,
+        namespace: str,
+        prefix: str | None = None,
+    ) -> list[str]:
+        """List all cache keys for a namespace using Redis SCAN."""
+        try:
+            pattern = self._get_generic_cache_key(namespace, prefix or "*")
+            keys: list[str] = []
+            cursor = 0
+            while True:
+                cursor, found = await self.redis.scan(
+                    cursor=cursor,
+                    match=pattern,
+                    count=100,
+                )
+                for raw_key in found:
+                    key_str = raw_key.decode() if isinstance(raw_key, bytes) else raw_key
+                    # Strip the namespace prefix to return just the key part
+                    ns_prefix = f"generic_cache:{namespace}:"
+                    if key_str.startswith(ns_prefix):
+                        keys.append(key_str[len(ns_prefix) :])
+                if cursor == 0:
+                    break
+            return keys
+        except Exception as e:
+            logger.error(
+                "Failed to list cache keys for namespace=%s: %s",
+                namespace,
+                e,
+            )
+            return []
 
     ###########################
     #### MESSAGE METHODS ######
@@ -1094,7 +1117,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Raises:
             Exception: If retrieval fails.
         """
-        """Retrieve a single message by ID."""
         # Ensure schema is initialized before accessing tables
         thread_id = config.get("thread_id")
 
@@ -1609,7 +1631,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Raises:
             Exception: If cleaning fails.
         """
-        """Clean/delete a thread and all associated data."""
         # Ensure schema is initialized before accessing tables
         thread_id, user_id = self._validate_config(config)
 
@@ -1649,7 +1670,6 @@ class PgCheckpointer(BaseCheckpointer[StateT]):
         Returns:
             Any | None: None
         """
-        """Clean up connections and resources."""
         logger.info("Releasing PgCheckpointer resources")
 
         if not self.release_resources:
