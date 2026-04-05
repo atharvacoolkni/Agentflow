@@ -3,6 +3,11 @@
 The resolver translates lightweight ``MediaRef`` references (which is all
 that lives in messages/state) back into actual binary data or URLs that
 the OpenAI / Google APIs understand.
+
+``MediaRefResolver`` now acts as a capability-aware wrapper around the
+unified ``MediaResolver``.  The legacy ``resolve_for_openai()`` and
+``resolve_for_google()`` methods remain for backward compatibility but
+now route through the capability-based fallback chain.
 """
 
 from __future__ import annotations
@@ -12,7 +17,12 @@ import logging
 import time
 from typing import Any
 
+from agentflow.core.exceptions.media_exceptions import UnsupportedMediaInputError
 from agentflow.core.state.message_block import MediaRef
+from agentflow.storage.media.capabilities import (
+    MediaTransportMode,
+    get_capabilities,
+)
 
 from .storage.base import BaseMediaStore
 
@@ -56,15 +66,35 @@ class MediaRefResolver:
         return self
 
     # ------------------------------------------------------------------
-    # OpenAI
+    # OpenAI (capability-aware wrapper)
     # ------------------------------------------------------------------
 
-    async def resolve_for_openai(self, ref: MediaRef) -> dict[str, Any]:
+    async def resolve_for_openai(
+        self,
+        ref: MediaRef,
+        model: str | None = None,
+    ) -> dict[str, Any]:
         """Convert a ``MediaRef`` to an OpenAI-style content part dict.
+
+        If *model* is provided, the capability matrix is consulted and
+        ``UnsupportedMediaInputError`` is raised for text-only models.
+        Otherwise, the legacy ad-hoc resolution path is used.
 
         Returns:
             A dict like ``{"type": "image_url", "image_url": {"url": ...}}``.
         """
+        if model is not None:
+            return await self._resolve_with_capabilities(
+                ref,
+                provider="openai",
+                model=model,
+                media_type="image",
+            )
+
+        return await self._resolve_openai_legacy(ref)
+
+    async def _resolve_openai_legacy(self, ref: MediaRef) -> dict[str, Any]:
+        """Legacy OpenAI resolution (no capability check)."""
         if ref.kind == "url" and ref.url and ref.url.startswith(_AGENTFLOW_SCHEME):
             direct_url = await self._get_direct_url(ref)
             if direct_url:
@@ -88,14 +118,34 @@ class MediaRefResolver:
         return _openai_image_url("")
 
     # ------------------------------------------------------------------
-    # Google GenAI
+    # Google GenAI (capability-aware wrapper)
     # ------------------------------------------------------------------
 
-    async def resolve_for_google(self, ref: MediaRef) -> Any:
+    async def resolve_for_google(
+        self,
+        ref: MediaRef,
+        model: str | None = None,
+    ) -> Any:
         """Convert a ``MediaRef`` to a ``google.genai.types.Part``.
+
+        If *model* is provided, the capability matrix is consulted and
+        ``UnsupportedMediaInputError`` is raised for text-only models.
+        Otherwise, the legacy ad-hoc resolution path is used.
 
         Requires ``google-genai`` to be installed.
         """
+        if model is not None:
+            return await self._resolve_with_capabilities(
+                ref,
+                provider="google",
+                model=model,
+                media_type="image",
+            )
+
+        return await self._resolve_google_legacy(ref)
+
+    async def _resolve_google_legacy(self, ref: MediaRef) -> Any:
+        """Legacy Google resolution (no capability check)."""
         from google.genai import types
 
         if ref.kind == "url" and ref.url and ref.url.startswith(_AGENTFLOW_SCHEME):
@@ -128,7 +178,201 @@ class MediaRefResolver:
         return types.Part(text="[Unresolvable media reference]")
 
     # ------------------------------------------------------------------
-    # Internal
+    # Capability-based resolution (shared)
+    # ------------------------------------------------------------------
+
+    async def _resolve_with_capabilities(
+        self,
+        ref: MediaRef,
+        provider: str,
+        model: str,
+        media_type: str,
+    ) -> Any:
+        """Resolve using the capability matrix and fallback chain."""
+        caps = get_capabilities(provider, model)
+
+        if not caps.supports_media_type(media_type):
+            raise UnsupportedMediaInputError(
+                provider=provider,
+                model=model,
+                media_type=media_type,
+                source_kind=_source_kind(ref),
+                transports_attempted=[],
+            )
+
+        transport_order = caps.get_transport_order(media_type)
+        transports_attempted: list[MediaTransportMode] = []
+
+        for transport in transport_order:
+            transports_attempted.append(transport)
+            try:
+                result = await self._try_transport(
+                    ref,
+                    transport,
+                    provider,
+                    caps,
+                )
+                if result is not None:
+                    return result
+            except UnsupportedMediaInputError:
+                raise
+            except Exception:
+                logger.debug(
+                    "Transport %s failed for %s/%s, trying next fallback",
+                    transport.value,
+                    provider,
+                    model,
+                )
+                continue
+
+        raise UnsupportedMediaInputError(
+            provider=provider,
+            model=model,
+            media_type=media_type,
+            source_kind=_source_kind(ref),
+            transports_attempted=transports_attempted,
+        )
+
+    async def _try_transport(
+        self,
+        ref: MediaRef,
+        transport: MediaTransportMode,
+        provider: str,
+        caps: Any,
+    ) -> Any | None:
+        """Attempt to resolve using a specific transport mode."""
+        if transport == MediaTransportMode.remote_url:
+            return await self._transport_remote_url(ref, caps, provider)
+
+        if transport == MediaTransportMode.provider_file:
+            return await self._transport_provider_file(ref, provider)
+
+        if transport == MediaTransportMode.inline_bytes:
+            return await self._transport_inline_bytes(ref, provider)
+
+        return None
+
+    async def _transport_remote_url(
+        self,
+        ref: MediaRef,
+        caps: Any,
+        provider: str,
+    ) -> Any | None:
+        """Resolve to a remote URL (signed or direct)."""
+        if ref.kind == "url" and ref.url:
+            if ref.url.startswith(_AGENTFLOW_SCHEME):
+                if caps.can_convert_internal_to_remote:
+                    url = await self._get_direct_url(ref)
+                    if url:
+                        if provider == "openai":
+                            return _openai_image_url(url)
+                        if provider == "google":
+                            from google.genai import types
+
+                            mime = ref.mime_type or "application/octet-stream"
+                            return types.Part.from_uri(file_uri=url, mime_type=mime)
+                return None
+
+            if caps.accepts_external_urls and provider == "openai":
+                return _openai_image_url(ref.url)
+
+        # file_id references are treated as remote URLs for OpenAI
+        if ref.kind == "file_id" and ref.file_id and provider == "openai":
+            url = ref.url or ref.file_id or ""
+            return _openai_image_url(url)
+
+        return None
+
+    async def _transport_inline_bytes(
+        self,
+        ref: MediaRef,
+        provider: str,
+    ) -> Any | None:
+        """Resolve to inline bytes/data URI."""
+        if ref.kind == "data" and ref.data_base64:
+            mime = ref.mime_type or "application/octet-stream"
+            if provider == "openai":
+                return _openai_image_url(f"data:{mime};base64,{ref.data_base64}")
+            if provider == "google":
+                from google.genai import types
+
+                data = base64.b64decode(ref.data_base64)
+                return types.Part.from_bytes(data=data, mime_type=mime)
+
+        if ref.kind == "url" and ref.url:
+            try:
+                data, mime = await self._retrieve_bytes(ref)
+                if provider == "openai":
+                    b64 = base64.b64encode(data).decode()
+                    return _openai_image_url(f"data:{mime};base64,{b64}")
+                if provider == "google":
+                    from google.genai import types
+
+                    return types.Part.from_bytes(data=data, mime_type=mime)
+            except Exception:
+                return None
+
+        return None
+
+    async def _transport_provider_file(
+        self,
+        ref: MediaRef,
+        provider: str,
+    ) -> Any | None:
+        """Resolve via provider-native file upload (Google File API)."""
+        if provider != "google":
+            return None
+
+        try:
+            from google.genai import types
+
+            if ref.kind == "url" and ref.url:
+                if ref.url.startswith("gs://"):
+                    mime = ref.mime_type or "image/jpeg"
+                    return types.Part.from_uri(file_uri=ref.url, mime_type=mime)
+
+                data, mime = await self._retrieve_bytes(ref)
+                from .provider_media import upload_to_google_file_api
+
+                return await upload_to_google_file_api(data, mime)
+
+            if ref.kind == "data" and ref.data_base64:
+                data = base64.b64decode(ref.data_base64)
+                mime = ref.mime_type or "image/jpeg"
+                from .provider_media import upload_to_google_file_api
+
+                return await upload_to_google_file_api(data, mime)
+
+        except Exception:
+            return None
+
+        return None
+
+    async def _retrieve_bytes(self, ref: MediaRef) -> tuple[bytes, str]:
+        """Retrieve bytes for a media reference."""
+        if ref.kind == "url" and ref.url:
+            if ref.url.startswith(_AGENTFLOW_SCHEME):
+                return await self._retrieve(ref.url)
+            return await self._fetch_external_url(ref.url)
+
+        if ref.kind == "data" and ref.data_base64:
+            data = base64.b64decode(ref.data_base64)
+            return data, ref.mime_type or "application/octet-stream"
+
+        raise ValueError(f"Cannot retrieve bytes for ref kind: {ref.kind}")
+
+    async def _fetch_external_url(self, url: str) -> tuple[bytes, str]:
+        """Fetch an external URL and return (bytes, mime_type)."""
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session, session.get(url) as resp:
+            resp.raise_for_status()
+            data = await resp.read()
+            mime = resp.headers.get("Content-Type", "application/octet-stream")
+            return data, mime
+
+    # ------------------------------------------------------------------
+    # Internal helpers
     # ------------------------------------------------------------------
 
     async def _retrieve(self, agentflow_url: str) -> tuple[bytes, str]:
@@ -154,8 +398,6 @@ class MediaRefResolver:
             return cached_url
 
         direct_url_kwargs: dict[str, Any] = {"mime_type": ref.mime_type}
-        # Only force the expiration when the resolver is coordinating a shared
-        # signed-URL cache. Otherwise the store's own default lifetime is fine.
         if self.cache_backend is not None:
             direct_url_kwargs["expiration"] = self.direct_url_expiration_seconds
 
@@ -195,6 +437,19 @@ class MediaRefResolver:
             },
             ttl_seconds=self.direct_url_expiration_seconds,
         )
+
+
+def _source_kind(ref: MediaRef) -> str:
+    """Determine the source kind for error reporting."""
+    if ref.kind == "url":
+        if ref.url and ref.url.startswith(_AGENTFLOW_SCHEME):
+            return "internal_ref"
+        return "url"
+    if ref.kind == "data":
+        return "data"
+    if ref.kind == "file_id":
+        return "file_id"
+    return ref.kind or "unknown"
 
 
 def _openai_image_url(url: str) -> dict[str, Any]:

@@ -131,12 +131,14 @@ class DocumentBlock(BaseModel):
     Attributes:
         type (Literal["document"]): Block type discriminator.
         media (MediaRef): Reference to document media.
+        text (str | None): Extracted or provided document text content.
         pages (list[int] | None): List of page numbers.
-        excerpt (str | None): Excerpt from the document.
+        excerpt (str | None): Short excerpt/preview from the document.
     """
 
     type: Literal["document"] = "document"
     media: MediaRef
+    text: str | None = None
     pages: list[int] | None = None
     excerpt: str | None = None
 

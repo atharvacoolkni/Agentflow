@@ -9,6 +9,8 @@ This package provides all persistence and media-handling infrastructure:
 
 from __future__ import annotations
 
+# Import media first to avoid circular dependency:
+# storage → checkpointer → core.state → core.graph → utils → storage.checkpointer
 from . import checkpointer, media, store
 
 # --- Checkpointer ---

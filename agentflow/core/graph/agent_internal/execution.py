@@ -13,7 +13,10 @@ from agentflow.core.graph.tool_node import ToolNode
 from agentflow.core.state import AgentState
 from agentflow.core.state.base_context import BaseContextManager
 from agentflow.runtime.adapters.llm.model_response_converter import ModelResponseConverter
-from agentflow.utils.converter import convert_messages, strip_media_blocks
+from agentflow.utils.converter import (
+    convert_messages,
+    strip_media_blocks,
+)
 
 from .constants import RetryConfig
 
@@ -308,6 +311,11 @@ class AgentExecutionMixin:
             extra_messages=self.extra_messages or [],
         )
 
+        # Resolve internal media refs (agentflow://media/...) before provider call.
+        # This converts internal refs to signed URLs or inline base64, using the
+        # capability-aware path when provider+model are known.
+        messages = await self._resolve_media_in_messages(messages)
+
         # Multi-agent safety: strip media blocks for text-only agents.
         # When an agent has no multimodal_config, it cannot process images,
         # audio, video, or documents — so we remove them.  This handles the
@@ -331,6 +339,154 @@ class AgentExecutionMixin:
 
         converter_key = self._get_converter_key()
         return ModelResponseConverter(response, converter=converter_key)
+
+    async def _resolve_media_in_messages(  # noqa: PLR0915, PLR0912
+        self,
+        messages: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Resolve internal media refs in converted message dicts.
+
+        For messages that contain ``agentflow://media/`` URLs in their
+        content parts, this method resolves them to signed URLs or inline
+        base64 using the capability-aware resolver.
+
+        Returns the messages list with resolved URLs in place.
+        """
+        media_store = getattr(self, "media_store", None)
+        if media_store is None:
+            # Try to get from container
+            container = InjectQ.get_instance()
+            media_store = container.try_get("media_store") or container.try_get("BaseMediaStore")
+
+        if media_store is None:
+            return messages
+
+        from agentflow.storage.media.resolver import MediaRefResolver
+
+        resolver = MediaRefResolver(media_store=media_store)
+        provider = getattr(self, "provider", None)
+        model = getattr(self, "model", None)
+        # Strip provider prefix from model (e.g. "openai/gpt-4o" -> "gpt-4o")
+        if model and "/" in model:
+            model = model.split("/", 1)[1]
+
+        for msg in messages:
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+
+            for i, part in enumerate(content):
+                if not isinstance(part, dict):
+                    continue
+
+                part_type = part.get("type", "")
+                if part_type == "image_url":
+                    url = part.get("image_url", {}).get("url", "")
+                    if url.startswith("agentflow://media/"):
+                        ref_media = type(
+                            "MediaRef",
+                            (),
+                            {
+                                "kind": "url",
+                                "url": url,
+                                "mime_type": part.get("image_url", {}).get("mime_type"),
+                                "data_base64": None,
+                                "file_id": None,
+                            },
+                        )()
+                        try:
+                            if provider == "google":
+                                resolved = await resolver.resolve_for_google(
+                                    ref_media,
+                                    model=model,
+                                )
+                                if hasattr(resolved, "inline_data"):
+                                    # Google Part with inline data — convert back to OpenAI format
+                                    inline = resolved.inline_data
+                                    import base64
+
+                                    b64 = base64.b64encode(inline.data).decode()
+                                    content[i] = {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:{inline.mime_type};base64,{b64}",
+                                        },
+                                    }
+                                elif hasattr(resolved, "file_data"):
+                                    content[i] = {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": resolved.file_data.file_uri,
+                                        },
+                                    }
+                            else:
+                                resolved = await resolver.resolve_for_openai(
+                                    ref_media,
+                                    model=model,
+                                )
+                                content[i] = resolved
+                        except Exception:
+                            logger.warning(
+                                "Failed to resolve media ref %s for %s/%s",
+                                url,
+                                provider,
+                                model,
+                            )
+
+                elif part_type in ("document", "video"):
+                    media_info = part.get(part_type, {})
+                    url = media_info.get("url", "")
+                    if url and url.startswith("agentflow://media/"):
+                        ref_media = type(
+                            "MediaRef",
+                            (),
+                            {
+                                "kind": "url",
+                                "url": url,
+                                "mime_type": media_info.get("mime_type"),
+                                "data_base64": media_info.get("data"),
+                                "file_id": None,
+                            },
+                        )()
+                        try:
+                            if provider == "google":
+                                resolved = await resolver.resolve_for_google(
+                                    ref_media,
+                                    model=model,
+                                )
+                                if hasattr(resolved, "inline_data"):
+                                    import base64
+
+                                    b64 = base64.b64encode(resolved.inline_data.data).decode()
+                                    content[i] = {
+                                        "type": part_type,
+                                        part_type: {
+                                            "data": b64,
+                                            "mime_type": resolved.inline_data.mime_type,
+                                        },
+                                    }
+                            else:
+                                resolved = await resolver.resolve_for_openai(
+                                    ref_media,
+                                    model=model,
+                                )
+                                if "image_url" in resolved:
+                                    content[i] = {
+                                        "type": part_type,
+                                        part_type: {
+                                            "url": resolved["image_url"]["url"],
+                                            "mime_type": media_info.get("mime_type"),
+                                        },
+                                    }
+                        except Exception:
+                            logger.warning(
+                                "Failed to resolve media ref %s for %s/%s",
+                                url,
+                                provider,
+                                model,
+                            )
+
+        return messages
 
     async def _resolve_tools(self, container: InjectQ) -> list[dict[str, Any]]:
         """Resolve tool definitions from inline tools and named ToolNodes."""

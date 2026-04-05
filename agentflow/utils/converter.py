@@ -68,12 +68,18 @@ def strip_media_blocks(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def resolve_media_refs(
     messages: list[Message],
     resolver: "MediaRefResolver",
+    provider: str | None = None,
+    model: str | None = None,
 ) -> list[Message]:
     """Pre-resolve ``agentflow://media/`` URLs in message media blocks.
 
     Replaces internal media refs with inline base64 so the sync converter
     pipeline can handle them without async calls.  Only touches blocks
     whose ``media.url`` starts with ``agentflow://media/``.
+
+    When *provider* and *model* are provided, uses the capability-aware
+    resolution path (e.g. Google will not use signed URLs, will fall back
+    to inline bytes).  Otherwise uses the legacy direct-resolution path.
 
     This should be called *before* ``convert_messages()`` when a MediaStore
     is configured.  If no MediaStore is in use, skip this step.
@@ -85,6 +91,37 @@ async def resolve_media_refs(
             media = block.media  # type: ignore[union-attr]
             if not (media.kind == "url" and media.url and media.url.startswith(_AGENTFLOW_SCHEME)):
                 continue
+
+            # Use capability-aware resolution when provider+model are known
+            if provider and model:
+                resolved = await resolver.resolve_for_openai(media, model=model)
+                if provider == "google":
+                    resolved = await resolver.resolve_for_google(media, model=model)
+
+                if resolved and "image_url" in resolved:
+                    url = resolved["image_url"]["url"]
+                    if url.startswith("data:"):
+                        _, b64_data = url.partition(",")
+                        mime = url.split(":")[1].split(";")[0]
+                        block.media = media.model_copy(  # type: ignore[union-attr]
+                            update={
+                                "kind": "data",
+                                "data_base64": b64_data,
+                                "mime_type": mime,
+                                "url": None,
+                                "size_bytes": len(b64_data),
+                            }
+                        )
+                    else:
+                        block.media = media.model_copy(  # type: ignore[union-attr]
+                            update={
+                                "kind": "url",
+                                "url": url,
+                            }
+                        )
+                continue
+
+            # Legacy path: try signed URL first, then base64 fallback
             direct_url = await resolver._get_direct_url(media)  # type: ignore[attr-defined]
             if direct_url:
                 block.media = media.model_copy(  # type: ignore[union-attr]

@@ -217,6 +217,25 @@ class BaseCheckpointer[StateT: AgentState](ABC):
         """Delete a previously cached value."""
         return None
 
+    async def alist_cache_keys(
+        self,
+        namespace: str,
+        prefix: str | None = None,
+    ) -> list[str]:
+        """List all cache keys for a namespace.
+
+        This is intentionally optional — default returns an empty list.
+        Subclasses should override if they support key enumeration.
+
+        Args:
+            namespace: Cache namespace (e.g. "media:signed-url").
+            prefix: Optional prefix to filter keys.
+
+        Returns:
+            List of cache key strings.
+        """
+        return []
+
     def put_cache_value(
         self,
         namespace: str,
