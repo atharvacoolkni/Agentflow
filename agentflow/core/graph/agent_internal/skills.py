@@ -38,9 +38,9 @@ class AgentSkillsMixin:
         if skills is None:
             return
 
-        from agentflow.core.skills.activation import make_set_skill_tool
         from agentflow.core.skills.models import SkillConfig
         from agentflow.core.skills.registry import SkillsRegistry
+        from agentflow.core.skills.activation import make_set_skill_tool
 
         if not isinstance(skills, SkillConfig):
             raise TypeError(f"Expected SkillConfig, got {type(skills)}")
@@ -58,10 +58,10 @@ class AgentSkillsMixin:
         )
 
         # Add skill tool to the tool node
+        # To Work with skills you need to add tool node
         if self._tool_node is None:
-            self._tool_node = ToolNode([set_skill_fn])
-        else:
-            self._tool_node.add_tool(set_skill_fn)
+            raise RuntimeError("ToolNode must be initialized before setting up skills")
+        self._tool_node.add_tool(set_skill_fn)
 
         # Build and cache trigger-table prompt once during setup.
         if self._skills_config.inject_trigger_table:

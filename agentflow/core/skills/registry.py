@@ -188,6 +188,6 @@ class SkillsRegistry:
 
     def build_set_skill_tool(self, hot_reload: bool = True) -> Any:
         """Convenience — delegates to :func:`activation.make_set_skill_tool`."""
-        from .activation import make_set_skill_tool
+        from agentflow.core.skills.activation import make_set_skill_tool
 
         return make_set_skill_tool(self, hot_reload=hot_reload)
