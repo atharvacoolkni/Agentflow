@@ -15,8 +15,7 @@ class TestInMemoryCheckpointer:
         checkpointer = InMemoryCheckpointer()
         assert checkpointer is not None  # noqa: S101
 
-    @pytest.mark.asyncio
-    async def test_save_checkpoint(self):
+    def test_save_checkpoint(self):
         """Test saving a checkpoint."""
         checkpointer = InMemoryCheckpointer()
 
@@ -26,8 +25,7 @@ class TestInMemoryCheckpointer:
         # Should not raise an exception
         checkpointer.put_state(checkpoint_config, state_data)
 
-    @pytest.mark.asyncio
-    async def test_load_checkpoint(self):
+    def test_load_checkpoint(self):
         """Test loading a checkpoint."""
         checkpointer = InMemoryCheckpointer()
 
@@ -41,8 +39,7 @@ class TestInMemoryCheckpointer:
         loaded_data = checkpointer.get_state(checkpoint_config)
         assert loaded_data == state_data  # noqa: S101
 
-    @pytest.mark.asyncio
-    async def test_load_nonexistent_checkpoint(self):
+    def test_load_nonexistent_checkpoint(self):
         """Test loading a checkpoint that doesn't exist."""
         checkpointer = InMemoryCheckpointer()
 
@@ -50,8 +47,7 @@ class TestInMemoryCheckpointer:
         loaded_data = checkpointer.get_state({"thread_id": "non_existent"})
         assert loaded_data is None  # noqa: S101
 
-    @pytest.mark.asyncio
-    async def test_list_checkpoints(self):
+    def test_list_checkpoints(self):
         """Test listing checkpoints."""
         checkpointer = InMemoryCheckpointer()
 
@@ -78,8 +74,7 @@ class TestInMemoryCheckpointer:
         expected_count = 3
         assert len(thread_list) >= expected_count  # noqa: S101
 
-    @pytest.mark.asyncio
-    async def test_put_get_messages(self):
+    def test_put_get_messages(self):
         """Test putting and getting messages."""
         checkpointer = InMemoryCheckpointer()
 
@@ -94,8 +89,7 @@ class TestInMemoryCheckpointer:
         retrieved_messages = checkpointer.get_message(thread_config, message_id)
         assert retrieved_messages is not None  # noqa: S101
 
-    @pytest.mark.asyncio
-    async def test_clear_state(self):
+    def test_clear_state(self):
         """Test clearing state."""
         checkpointer = InMemoryCheckpointer()
 
