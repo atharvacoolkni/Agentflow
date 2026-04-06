@@ -81,9 +81,11 @@ def _fetch_sync(url: str, timeout: float, max_chars: int) -> dict[str, object]:
     if not _is_public_hostname(parsed.hostname):
         return {"error": "URL host is not public or could not be resolved"}
 
-    req = request.Request(url, headers={"User-Agent": _USER_AGENT})
+    req = request.Request(url, headers={"User-Agent": _USER_AGENT})  # noqa: S310
     try:
-        with request.urlopen(req, timeout=max(1.0, min(float(timeout), 30.0))) as response:
+        with request.urlopen(  # noqa: S310  # nosec B310
+            req, timeout=max(1.0, min(float(timeout), 30.0))
+        ) as response:
             raw = response.read(max_chars + 1)
             status_code = response.getcode()
             final_url = response.geturl()

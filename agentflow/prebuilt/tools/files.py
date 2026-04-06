@@ -14,6 +14,8 @@ _DEFAULT_MAX_READ_CHARS = 20_000
 _DEFAULT_MAX_WRITE_CHARS = 200_000
 _DEFAULT_MAX_SEARCH_RESULTS = 20
 _MAX_SEARCH_FILE_SIZE = 1_000_000
+_MAX_SEARCH_PREVIEW_CHARS = 240
+_SEARCH_PREVIEW_ELLIPSIS_CHARS = 3
 _SKIP_DIRS = {
     ".git",
     ".hg",
@@ -68,6 +70,65 @@ def _is_probably_text(path: Path) -> bool:
     except OSError:
         return False
     return b"\x00" not in chunk
+
+
+def _write_file_content(
+    target: Path, content: str, mode: Literal["create", "overwrite", "append"]
+) -> None:
+    if mode == "append":
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(content)
+        return
+    if mode in {"overwrite", "create"}:
+        target.write_text(content, encoding="utf-8")
+        return
+    raise ValueError(f"unsupported mode: {mode}")
+
+
+def _is_search_candidate(candidate: Path, glob: str) -> bool:
+    if any(part in _SKIP_DIRS for part in candidate.parts):
+        return False
+    if not candidate.is_file():
+        return False
+    if candidate.stat().st_size > _MAX_SEARCH_FILE_SIZE:
+        return False
+    return glob == "**/*" or fnmatch.fnmatch(candidate.name, Path(glob).name)
+
+
+def _trim_search_preview(line: str) -> str:
+    preview = line.strip()
+    if len(preview) > _MAX_SEARCH_PREVIEW_CHARS:
+        preview_limit = _MAX_SEARCH_PREVIEW_CHARS - _SEARCH_PREVIEW_ELLIPSIS_CHARS
+        return f"{preview[:preview_limit]}..."
+    return preview
+
+
+def _append_content_matches(
+    results: list[dict[str, Any]],
+    candidate: Path,
+    relative_path: str,
+    query_lower: str,
+    limit: int,
+) -> None:
+    try:
+        for line_no, line in enumerate(
+            candidate.read_text(encoding="utf-8", errors="replace").splitlines(),
+            start=1,
+        ):
+            if query_lower not in line.lower():
+                continue
+            results.append(
+                {
+                    "path": relative_path,
+                    "match_type": "content",
+                    "line": line_no,
+                    "preview": _trim_search_preview(line),
+                }
+            )
+            if len(results) >= limit:
+                break
+    except OSError:
+        return
 
 
 @tool(
@@ -146,35 +207,26 @@ def file_write(
     try:
         target = _resolve_under_root(path, root)
         if len(content) > _DEFAULT_MAX_WRITE_CHARS:
-            return json.dumps({"error": "content is too large"})
-        if target.exists() and not target.is_file():
-            return json.dumps(
-                {"error": "path exists and is not a file", "path": _relative(target, root)}
-            )
-        if target.exists() and mode == "create":
-            return json.dumps({"error": "file already exists", "path": _relative(target, root)})
-        if not target.parent.exists():
-            if create_dirs:
-                target.parent.mkdir(parents=True, exist_ok=True)
-            else:
-                return json.dumps({"error": "parent directory does not exist"})
-
-        if mode == "append":
-            with target.open("a", encoding="utf-8") as handle:
-                handle.write(content)
-        elif mode in {"overwrite", "create"}:
-            target.write_text(content, encoding="utf-8")
+            result = {"error": "content is too large"}
+        elif target.exists() and not target.is_file():
+            result = {"error": "path exists and is not a file", "path": _relative(target, root)}
+        elif target.exists() and mode == "create":
+            result = {"error": "file already exists", "path": _relative(target, root)}
+        elif mode not in {"create", "overwrite", "append"}:
+            result = {"error": f"unsupported mode: {mode}"}
+        elif not target.parent.exists() and not create_dirs:
+            result = {"error": "parent directory does not exist"}
         else:
-            return json.dumps({"error": f"unsupported mode: {mode}"})
-
-        return json.dumps(
-            {
+            if not target.parent.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+            _write_file_content(target, content, mode)
+            result = {
                 "status": "written",
                 "path": _relative(target, root),
                 "bytes": len(content.encode("utf-8")),
                 "mode": mode,
             }
-        )
+        return json.dumps(result)
     except Exception as exc:
         return json.dumps({"error": str(exc)})
 
@@ -213,13 +265,7 @@ def file_search(
         for candidate in candidates:
             if len(results) >= limit:
                 break
-            if any(part in _SKIP_DIRS for part in candidate.parts):
-                continue
-            if not candidate.is_file():
-                continue
-            if candidate.stat().st_size > _MAX_SEARCH_FILE_SIZE:
-                continue
-            if not fnmatch.fnmatch(candidate.name, Path(glob).name) and glob != "**/*":
+            if not _is_search_candidate(candidate, glob):
                 continue
 
             relative_path = _relative(candidate, root)
@@ -238,28 +284,7 @@ def file_search(
             if not _is_probably_text(candidate):
                 continue
 
-            try:
-                for line_no, line in enumerate(
-                    candidate.read_text(encoding="utf-8", errors="replace").splitlines(),
-                    start=1,
-                ):
-                    if query_lower not in line.lower():
-                        continue
-                    preview = line.strip()
-                    if len(preview) > 240:
-                        preview = f"{preview[:237]}..."
-                    results.append(
-                        {
-                            "path": relative_path,
-                            "match_type": "content",
-                            "line": line_no,
-                            "preview": preview,
-                        }
-                    )
-                    if len(results) >= limit:
-                        break
-            except OSError:
-                continue
+            _append_content_matches(results, candidate, relative_path, query_lower, limit)
 
         return json.dumps(
             {"query": query, "root": _relative(search_root, root), "results": results}

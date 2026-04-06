@@ -5,7 +5,7 @@ implementation lives in smaller internal modules under ``agentflow.graph.agent_i
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agentflow.core.graph.base_agent import BaseAgent
 from agentflow.core.graph.tool_node import ToolNode
@@ -20,6 +20,10 @@ from .agent_internal.memory import AgentMemoryMixin
 from .agent_internal.openai import AgentOpenAIMixin
 from .agent_internal.providers import AgentProviderMixin
 from .agent_internal.skills import AgentSkillsMixin
+
+
+if TYPE_CHECKING:
+    from agentflow.storage.store.memory_config import MemoryConfig
 
 
 logger = logging.getLogger("agentflow.agent")

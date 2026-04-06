@@ -309,8 +309,10 @@ def get_agent_memory_system_prompt(memory_config: Any) -> str:
     if memory_config.retrieval_mode == ReadMode.PRELOAD:
         lines.extend(
             [
-                "Relevant long-term memories may be provided as system context before the user message.",
-                "Use the provided memory context when it is relevant, but do not assume it is exhaustive.",
+                "Relevant long-term memories may be provided as system context before "
+                "the user message.",
+                "Use the provided memory context when it is relevant, but do not assume "
+                "it is exhaustive.",
             ]
         )
         return "\n".join(lines)
@@ -323,9 +325,12 @@ def get_agent_memory_system_prompt(memory_config: Any) -> str:
         lines.extend(
             [
                 "You have access to user_memory_tool for user-specific long-term memory.",
-                "- To recall durable user facts, call user_memory_tool with action='search' and text.",
-                "- To save useful user facts or preferences, call user_memory_tool with action='remember' and text.",
-                "- Do not invent memory identifiers; the memory layer manages identity and deduplication.",
+                "- To recall durable user facts, call user_memory_tool with "
+                "action='search' and text.",
+                "- To save useful user facts or preferences, call user_memory_tool with "
+                "action='remember' and text.",
+                "- Do not invent memory identifiers; the memory layer manages identity "
+                "and deduplication.",
             ]
         )
 
@@ -334,7 +339,8 @@ def get_agent_memory_system_prompt(memory_config: Any) -> str:
             [
                 "You have access to agent_memory_tool for read-only agent/app memory.",
                 "- To recall agent-level context, call agent_memory_tool with query.",
-                "- Agent memory is read-only in this agent flow; do not attempt to write, update, or delete it.",
+                "- Agent memory is read-only in this agent flow; do not attempt to write, "
+                "update, or delete it.",
             ]
         )
 
