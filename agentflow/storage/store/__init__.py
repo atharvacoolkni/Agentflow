@@ -1,8 +1,7 @@
-from agentflow.prebuilt.tools.memory import (
-    make_agent_memory_tool,
-    make_user_memory_tool,
-    memory_tool,
-)
+from __future__ import annotations
+
+from importlib import import_module as _import_module
+from typing import Any as _Any
 
 from .base_store import BaseStore
 from .embedding import BaseEmbedding, GoogleEmbedding, OpenAIEmbedding
@@ -27,6 +26,24 @@ from .qdrant_store import (
     create_remote_qdrant_store,
 )
 from .store_schema import DistanceMetric, MemoryRecord, MemorySearchResult, MemoryType
+
+
+_MEMORY_TOOL_EXPORTS = {
+    "make_agent_memory_tool",
+    "make_user_memory_tool",
+    "memory_tool",
+}
+
+
+def __getattr__(name: str) -> _Any:
+    """Resolve prebuilt memory tools only when callers ask for them."""
+    if name in _MEMORY_TOOL_EXPORTS:
+        memory_tools = _import_module("agentflow.prebuilt.tools.memory")
+        value = getattr(memory_tools, name)
+        globals()[name] = value
+        return value
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [

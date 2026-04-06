@@ -9,6 +9,9 @@ This package provides all persistence and media-handling infrastructure:
 
 from __future__ import annotations
 
+from importlib import import_module as _import_module
+from typing import Any as _Any
+
 # Import media first to avoid circular dependency:
 # storage → checkpointer → core.state → core.graph → utils → storage.checkpointer
 from . import checkpointer, media, store
@@ -69,10 +72,25 @@ from .store import (
     create_remote_qdrant_store,
     get_agent_memory_system_prompt,
     get_memory_system_prompt,
-    make_agent_memory_tool,
-    make_user_memory_tool,
-    memory_tool,
 )
+
+
+_MEMORY_TOOL_EXPORTS = {
+    "make_agent_memory_tool",
+    "make_user_memory_tool",
+    "memory_tool",
+}
+
+
+def __getattr__(name: str) -> _Any:
+    """Keep prebuilt memory tools lazy at the storage package boundary."""
+    if name in _MEMORY_TOOL_EXPORTS:
+        memory_tools = _import_module("agentflow.prebuilt.tools.memory")
+        value = getattr(memory_tools, name)
+        globals()[name] = value
+        return value
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
