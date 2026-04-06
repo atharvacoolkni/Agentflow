@@ -19,10 +19,17 @@ def __getattr__(name: str):
         return getattr(module, name)
     if name in {
         "create_handoff_tool",
+        "fetch_url",
+        "file_read",
+        "file_search",
+        "file_write",
+        "google_web_search",
         "is_handoff_tool",
         "make_agent_memory_tool",
         "make_user_memory_tool",
         "memory_tool",
+        "safe_calculator",
+        "vertex_ai_search",
     }:
         module = importlib.import_module("agentflow.prebuilt.tools")
         return getattr(module, name)
@@ -37,9 +44,16 @@ __all__ = [
     "agent",
     # Tools
     "create_handoff_tool",
+    "fetch_url",
+    "file_read",
+    "file_search",
+    "file_write",
+    "google_web_search",
     "is_handoff_tool",
     "make_agent_memory_tool",
     "make_user_memory_tool",
     "memory_tool",
+    "safe_calculator",
     "tools",
+    "vertex_ai_search",
 ]
