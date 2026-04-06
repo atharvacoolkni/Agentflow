@@ -7,7 +7,7 @@ This package provides the runtime infrastructure for agent execution:
 - ``agentflow.runtime.protocols``  - agent communication protocol packages
 """
 
-from . import adapters, protocols, publisher
+from . import adapters, publisher
 from .adapters.llm import (
     BaseConverter,
     ConverterType,
@@ -28,6 +28,14 @@ from .publisher import (
     RedisPublisher,
     publish_event,
 )
+
+
+def __getattr__(name: str):
+    if name == "protocols":
+        import importlib
+
+        return importlib.import_module("agentflow.runtime.protocols")
+    raise AttributeError(name)
 
 
 __all__ = [

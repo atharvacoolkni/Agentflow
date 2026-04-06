@@ -907,19 +907,29 @@ class TestAgentSkillsMixin:
         with pytest.raises(TypeError, match="Expected SkillConfig"):
             mixin._setup_skills("not-a-config")
 
-    def test_setup_skills_creates_registry(self, tmp_path: Path):
+    def test_setup_skills_requires_existing_tool_node(self, tmp_path: Path):
         from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
+
+        _make_skill_dir(tmp_path, "alpha")
+
+        mixin = AgentSkillsMixin()
+        mixin._tool_node = None
+        with pytest.raises(RuntimeError, match="Skills require an existing ToolNode"):
+            mixin._setup_skills(SkillConfig(skills_dir=str(tmp_path)))
+
+    def test_setup_skills_creates_registry_with_existing_tool_node(self, tmp_path: Path):
+        from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.tool_node import ToolNode
 
         _make_skill_dir(tmp_path, "alpha")
         _make_skill_dir(tmp_path, "beta")
 
         mixin = AgentSkillsMixin()
-        mixin._tool_node = None
+        mixin._tool_node = ToolNode([])
         mixin._setup_skills(SkillConfig(skills_dir=str(tmp_path)))
 
         assert mixin._skills_registry is not None
         assert len(mixin._skills_registry) == 2
-        # Tool node should have been created with set_skill tool
         assert mixin._tool_node is not None
 
     def test_setup_skills_adds_tool_to_existing_toolnode(self, tmp_path: Path):
@@ -952,11 +962,12 @@ class TestAgentSkillsMixin:
 
     def test_build_skill_prompts_appends_trigger_table(self, tmp_path: Path):
         from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.tool_node import ToolNode
 
         _make_skill_dir(tmp_path, "review", triggers=["review code"])
 
         mixin = AgentSkillsMixin()
-        mixin._tool_node = None
+        mixin._tool_node = ToolNode([])
         mixin._setup_skills(SkillConfig(skills_dir=str(tmp_path), inject_trigger_table=True))
 
         base = [{"role": "system", "content": "Be helpful"}]
@@ -969,11 +980,12 @@ class TestAgentSkillsMixin:
 
     def test_build_skill_prompts_no_trigger_table_when_disabled(self, tmp_path: Path):
         from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.tool_node import ToolNode
 
         _make_skill_dir(tmp_path, "review")
 
         mixin = AgentSkillsMixin()
-        mixin._tool_node = None
+        mixin._tool_node = ToolNode([])
         mixin._setup_skills(SkillConfig(skills_dir=str(tmp_path), inject_trigger_table=False))
 
         base = [{"role": "system", "content": "Be helpful"}]
@@ -982,11 +994,12 @@ class TestAgentSkillsMixin:
 
     def test_build_skill_prompts_does_not_mutate_original(self, tmp_path: Path):
         from agentflow.core.graph.agent_internal.skills import AgentSkillsMixin
+        from agentflow.core.graph.tool_node import ToolNode
 
         _make_skill_dir(tmp_path, "review")
 
         mixin = AgentSkillsMixin()
-        mixin._tool_node = None
+        mixin._tool_node = ToolNode([])
         mixin._setup_skills(SkillConfig(skills_dir=str(tmp_path), inject_trigger_table=True))
 
         base = [{"role": "system", "content": "Be helpful"}]

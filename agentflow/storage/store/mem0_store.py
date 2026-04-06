@@ -21,9 +21,8 @@ Add operations with gather while bounding concurrency (simple semaphore) to
 avoid thread explosion.
 
 The store interprets the supplied ``config`` mapping passed to every method as:
-``{"user_id": str | None, "thread_id": str | None, "app_id": str | None}``.
-`thread_id` is stored into metadata under ``agent_id`` for backward compatibility
-with earlier implementations where agent_id served a similar role.
+``{"user_id": str | None, "app_id": str | None}``. Conversation-level scoping is
+intentionally ignored so long-term memory retrieval and writes work across threads.
 
 Prerequisite: install mem0.
 ```
@@ -117,20 +116,15 @@ class Mem0Store(BaseStore):
     # Internal helpers
     # ---------------------------------------------------------------------
 
-    def _extract_ids(self, config: dict[str, Any]) -> tuple[str, str | None, str | None]:
-        """Extract user_id, thread_id, app_id from per-call config with fallbacks."""
+    def _extract_ids(self, config: dict[str, Any]) -> tuple[str, str | None]:
+        """Extract user_id and app_id from per-call config with fallbacks."""
         user_id = config.get("user_id")
-        thread_id = config.get("thread_id")
         app_id = config.get("app_id") or self.app_id
 
-        # if user id and thread id are not provided, we cannot proceed
         if not user_id:
             raise ValueError("user_id must be provided in config")
 
-        if not thread_id:
-            raise ValueError("thread_id must be provided in config")
-
-        return user_id, thread_id, app_id
+        return user_id, app_id
 
     def _create_result(
         self,
@@ -164,7 +158,6 @@ class Mem0Store(BaseStore):
             memory_type=memory_type,
             metadata=metadata,
             user_id=user_id,
-            thread_id=metadata.get("run_id"),
         )
 
     def _iter_results(self, response: Any) -> Iterable[dict[str, Any]]:
@@ -196,7 +189,7 @@ class Mem0Store(BaseStore):
         if not text.strip():
             raise ValueError("Content cannot be empty")
 
-        user_id, thread_id, app_id = self._extract_ids(config)
+        user_id, app_id = self._extract_ids(config)
 
         mem_meta = {
             "memory_type": memory_type.value,
@@ -212,12 +205,11 @@ class Mem0Store(BaseStore):
             messages=[{"role": "user", "content": text}],
             user_id=user_id,
             agent_id=app_id,
-            run_id=thread_id,
             metadata=mem_meta,
             infer=infer,
         )
 
-        logger.debug("Stored memory for user=%s thread=%s id=%s", user_id, thread_id, result)
+        logger.debug("Stored memory for user=%s app=%s id=%s", user_id, app_id, result)
 
         return result
 
@@ -235,7 +227,7 @@ class Mem0Store(BaseStore):
         max_tokens: int = 4000,
         **kwargs: Any,
     ) -> list[MemorySearchResult]:
-        user_id, thread_id, app_id = self._extract_ids(config)
+        user_id, app_id = self._extract_ids(config)
 
         client = await self._get_client()
         result = await client.search(  # type: ignore
@@ -262,9 +254,9 @@ class Mem0Store(BaseStore):
         ]
 
         logger.debug(
-            "Searched memories for user=%s thread=%s query=%s found=%d",
+            "Searched memories for user=%s app=%s query=%s found=%d",
             user_id,
-            thread_id,
+            app_id,
             query,
             len(out),
         )
@@ -276,7 +268,7 @@ class Mem0Store(BaseStore):
         memory_id: str,
         **kwargs: Any,
     ) -> MemorySearchResult | None:
-        user_id, _, _ = self._extract_ids(config)
+        user_id, _ = self._extract_ids(config)
         # If we stored mapping use that user id instead (authoritative)
 
         client = await self._get_client()
@@ -292,7 +284,7 @@ class Mem0Store(BaseStore):
         limit: int = 100,
         **kwargs: Any,
     ) -> list[MemorySearchResult]:
-        user_id, thread_id, app_id = self._extract_ids(config)
+        user_id, app_id = self._extract_ids(config)
 
         client = await self._get_client()
         result = await client.get_all(  # type: ignore
@@ -316,9 +308,9 @@ class Mem0Store(BaseStore):
         ]
 
         logger.debug(
-            "Fetched all memories for user=%s thread=%s count=%d",
+            "Fetched all memories for user=%s app=%s count=%d",
             user_id,
-            thread_id,
+            app_id,
             len(out),
         )
         return out
@@ -356,7 +348,7 @@ class Mem0Store(BaseStore):
         memory_id: str,
         **kwargs: Any,
     ) -> Any:
-        user_id, _, _ = self._extract_ids(config)
+        user_id, _ = self._extract_ids(config)
         existing = await self.aget(config, memory_id)
         if not existing:
             logger.warning("Memory %s not found for deletion", memory_id)
@@ -382,7 +374,7 @@ class Mem0Store(BaseStore):
         **kwargs: Any,
     ) -> Any:
         # Delete all memories for a user
-        user_id, _, _ = self._extract_ids(config)
+        user_id, _ = self._extract_ids(config)
         client = await self._get_client()
         res = await client.delete_all(user_id=user_id)  # type: ignore
         logger.debug("Forgot all memories for user %s", user_id)
@@ -398,14 +390,12 @@ class Mem0Store(BaseStore):
 def create_mem0_store(
     config: dict[str, Any],
     user_id: str = "default_user",
-    thread_id: str | None = None,
     app_id: str = "agentflow_app",
 ) -> Mem0Store:
     """Factory for a basic Mem0 long-term store."""
     return Mem0Store(
         config=config,
         default_user_id=user_id,
-        default_thread_id=thread_id,
         app_id=app_id,
     )
 

@@ -21,9 +21,19 @@ from agentflow.storage.store.long_term_memory import (
     _validate_memory_type,
     create_memory_preload_node,
     get_memory_system_prompt,
+)
+from agentflow.prebuilt.tools.memory import (
+    make_agent_memory_tool,
+    make_user_memory_tool,
     memory_tool,
 )
+from agentflow.storage.store.memory_config import (
+    AgentMemoryConfig,
+    MemoryConfig,
+    UserMemoryConfig,
+)
 from agentflow.storage.store.store_schema import MemorySearchResult, MemoryType
+from agentflow.core.graph.tool_node import ToolNode
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +58,13 @@ def mock_task_manager():
     task = MagicMock(spec=asyncio.Task)
     task.done.return_value = False
     task.add_done_callback = MagicMock()
-    mgr.create_task = MagicMock(return_value=task)
+
+    def _create_task(coro, *args, **kwargs):
+        if hasattr(coro, "close"):
+            coro.close()
+        return task
+
+    mgr.create_task = MagicMock(side_effect=_create_task)
     mgr.get_task_count = MagicMock(return_value=0)
     mgr.wait_for_all = AsyncMock()
     return mgr
@@ -397,6 +413,107 @@ class TestMemoryToolExceptionHandling:
             )
         )
         assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# Agent-level memory tools
+# ---------------------------------------------------------------------------
+
+
+class TestAgentLevelMemoryTools:
+    @pytest.mark.asyncio
+    async def test_user_memory_tool_search_uses_cross_thread_config(
+        self, mock_store, mock_task_manager, sample_search_results, config
+    ):
+        memory = MemoryConfig(user_memory=UserMemoryConfig(user_id="u1"))
+        tool_fn = make_user_memory_tool(memory)
+        mock_store.asearch.return_value = sample_search_results
+
+        result = json.loads(
+            await tool_fn(
+                action="search",
+                text="preferences",
+                store=mock_store,
+                task_manager=mock_task_manager,
+                config=config,
+            )
+        )
+
+        assert len(result) == 2
+        call_args = mock_store.asearch.call_args
+        assert call_args.args[0] == {"user_id": "u1"}
+
+    @pytest.mark.asyncio
+    async def test_user_memory_tool_remember_schedules_write(
+        self, mock_store, mock_task_manager, config
+    ):
+        memory = MemoryConfig(user_memory=UserMemoryConfig(user_id="u1"))
+        tool_fn = make_user_memory_tool(memory)
+
+        result = json.loads(
+            await tool_fn(
+                action="remember",
+                text="User prefers short answers",
+                store=mock_store,
+                task_manager=mock_task_manager,
+                config=config,
+            )
+        )
+
+        assert result == {"status": "scheduled", "action": "remember"}
+        mock_task_manager.create_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_agent_memory_tool_search_is_read_only(
+        self, mock_store, mock_task_manager, sample_search_results, config
+    ):
+        memory = MemoryConfig(
+            agent_memory=AgentMemoryConfig(enabled=True, agent_id="agent-1")
+        )
+        tool_fn = make_agent_memory_tool(memory)
+        mock_store.asearch.return_value = sample_search_results
+
+        result = json.loads(
+            await tool_fn(
+                query="release policy",
+                store=mock_store,
+                task_manager=mock_task_manager,
+                config=config,
+            )
+        )
+
+        assert len(result) == 2
+        call_args = mock_store.asearch.call_args
+        assert call_args.args[0]["thread_id"] == "agent-1"
+        mock_task_manager.create_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_default_agent_tool_schemas_hide_admin_fields(self):
+        memory = MemoryConfig(
+            user_memory=UserMemoryConfig(),
+            agent_memory=AgentMemoryConfig(enabled=True),
+        )
+        tools = ToolNode(memory.model_facing_tools())
+        schemas = await tools.all_tools()
+
+        schema_by_name = {s["function"]["name"]: s for s in schemas}
+        user_props = schema_by_name["user_memory_tool"]["function"]["parameters"]["properties"]
+        agent_props = schema_by_name["agent_memory_tool"]["function"]["parameters"]["properties"]
+
+        assert set(user_props) == {"action", "text", "memory_type", "category", "limit"}
+        assert set(agent_props) == {"query", "memory_type", "category", "limit"}
+        assert "memory_id" not in user_props
+        assert "memory_key" not in user_props
+        assert "action" not in agent_props
+
+    def test_preload_does_not_expose_model_facing_tools(self):
+        memory = MemoryConfig(
+            retrieval_mode="preload",
+            user_memory=UserMemoryConfig(),
+            agent_memory=AgentMemoryConfig(enabled=True),
+        )
+
+        assert memory.model_facing_tools() == []
 
 
 # ---------------------------------------------------------------------------

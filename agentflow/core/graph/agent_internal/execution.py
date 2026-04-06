@@ -48,6 +48,10 @@ class AgentExecutionMixin:
         logger.debug("tool_node is a ToolNode instance")
         return tn
 
+    def get_tool_node(self) -> ToolNode | None:
+        """Return the agent-owned ``ToolNode`` when one is configured."""
+        return getattr(self, "_tool_node", None)
+
     async def _trim_context(
         self,
         state: AgentState,
@@ -299,6 +303,9 @@ class AgentExecutionMixin:
         if hasattr(self, "_build_skill_prompts") and callable(self._build_skill_prompts):
             effective_system_prompt = self._build_skill_prompts(state, self.system_prompt)
 
+        if hasattr(self, "_build_memory_prompts") and callable(self._build_memory_prompts):
+            effective_system_prompt.extend(await self._build_memory_prompts(state, config))
+
         messages = convert_messages(
             system_prompts=effective_system_prompt,
             state=state,
@@ -493,15 +500,25 @@ class AgentExecutionMixin:
 
         try:
             node = container.call_factory("get_node", self.tool_node_name)
-        except (KeyError, DependencyNotFoundError):
-            logger.warning(
-                "ToolNode with name '%s' not found in InjectQ registry.",
-                self.tool_node_name,
-            )
-            return tools
+        except (KeyError, DependencyNotFoundError) as exc:
+            raise RuntimeError(
+                f"ToolNode named '{self.tool_node_name}' was not found in the compiled graph. "
+                "Register the named ToolNode in the graph before executing the Agent."
+            ) from exc
 
-        if node and isinstance(node.func, ToolNode):
-            return await node.func.all_tools(tags=self.tools_tags)
+        if node is None:
+            raise RuntimeError(
+                f"ToolNode named '{self.tool_node_name}' was not found in the compiled graph. "
+                "Register the named ToolNode in the graph before executing the Agent."
+            )
+
+        if not isinstance(node.func, ToolNode):
+            raise RuntimeError(
+                f"Graph node '{self.tool_node_name}' is not a ToolNode. "
+                "Pass a ToolNode instance or register the proper graph node."
+            )
+
+        tools.extend(await node.func.all_tools(tags=self.tools_tags))
         return tools
 
     def _extract_prompt(self, messages: list[dict[Any, Any]]) -> str:

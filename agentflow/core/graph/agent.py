@@ -16,6 +16,7 @@ from agentflow.storage.media.config import MultimodalConfig
 from .agent_internal.constants import DEFAULT_RETRY_CONFIG, REASONING_DEFAULT, RetryConfig
 from .agent_internal.execution import AgentExecutionMixin
 from .agent_internal.google import AgentGoogleMixin
+from .agent_internal.memory import AgentMemoryMixin
 from .agent_internal.openai import AgentOpenAIMixin
 from .agent_internal.providers import AgentProviderMixin
 from .agent_internal.skills import AgentSkillsMixin
@@ -30,6 +31,7 @@ class Agent(
     AgentOpenAIMixin,
     AgentProviderMixin,
     AgentSkillsMixin,
+    AgentMemoryMixin,
     BaseAgent,
 ):
     """A smart node function wrapper for LLM interactions.
@@ -86,6 +88,7 @@ class Agent(
         api_style: str = "chat",
         reasoning_config: dict[str, Any] | bool | None = REASONING_DEFAULT,  # type: ignore
         skills: "SkillConfig | None" = None,
+        memory: "MemoryConfig | None" = None,
         retry_config: RetryConfig | bool | None = True,
         fallback_models: list[str | tuple[str, str]] | None = None,
         multimodal_config: MultimodalConfig | None = None,
@@ -142,6 +145,8 @@ class Agent(
             api_style: API style for OpenAI provider. ``"chat"`` uses
                 Chat Completions, ``"responses"`` uses the Responses API.
                 Default: ``"chat"``.
+            memory: Optional ``MemoryConfig`` enabling agent-level long-term
+                memory tools and system prompts.
             reasoning_config: Unified reasoning control for all providers. Default
                 is ``{"effort": "medium"}`` (on). Pass ``None`` to turn off.
                 ``effort`` applies to both providers; ``summary`` is OpenAI-only;
@@ -304,6 +309,10 @@ class Agent(
             f"Agent initialized: model={model}, provider={self.provider}, "
             f"output_type={self.output_type}, has_tools={self._tool_node is not None}"
         )
+
+        # Memory setup (via mixin) runs before skills so a memory-only Agent can
+        # lazily create the internal ToolNode that both systems append to.
+        self._setup_memory(memory)
 
         # Skills setup (via mixin)
         self._setup_skills(skills)

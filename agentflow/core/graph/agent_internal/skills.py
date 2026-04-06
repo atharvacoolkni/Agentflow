@@ -57,10 +57,12 @@ class AgentSkillsMixin:
             hot_reload=self._skills_config.hot_reload,
         )
 
-        # Add skill tool to the tool node
-        # To Work with skills you need to add tool node
+        # Add skill tool to the tool node; require an existing ToolNode.
         if self._tool_node is None:
-            raise RuntimeError("ToolNode must be initialized before setting up skills")
+            raise RuntimeError(
+                "Skills require an existing ToolNode when skills are enabled. "
+                "Provide a ToolNode to the Agent before configuring skills."
+            )
         self._tool_node.add_tool(set_skill_fn)
 
         # Build and cache trigger-table prompt once during setup.
