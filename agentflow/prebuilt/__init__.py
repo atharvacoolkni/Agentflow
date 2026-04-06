@@ -1,58 +1,82 @@
-"""Prebuilt agents and tools for Agentflow.
+"""Prebuilt tools and agent packages for Agentflow.
 
-This package provides ready-to-use agent patterns and utility tools:
-
-- ``agentflow.prebuilt.agent`` — prebuilt agent implementations (ReactAgent, RAGAgent, ...)
-- ``agentflow.prebuilt.tools`` — prebuilt tools (handoff, ...)
+Import concrete agent implementations from ``agentflow.prebuilt.agent`` and
+tool helpers from ``agentflow.prebuilt.tools``.
 """
 
 from __future__ import annotations
 
-from importlib import import_module
-from typing import TYPE_CHECKING, Any
+from importlib import import_module as _import_module
+from typing import Any as _Any
 
 
-if TYPE_CHECKING:
-    from . import agent, tools
-    from .agent import RAGAgent, ReactAgent, RouterAgent
-    from .tools import create_handoff_tool, is_handoff_tool
-
-__all__ = [
-    # Agents
+_AGENT_EXPORTS = {
     "RAGAgent",
     "ReactAgent",
     "RouterAgent",
-    # Submodules
-    "agent",
-    # Tools
-    "create_handoff_tool",
-    "is_handoff_tool",
-    "tools",
-]
+}
 
-_LAZY_EXPORTS: dict[str, tuple[str, str | None]] = {
-    "agent": (".agent", None),
-    "tools": (".tools", None),
-    "RAGAgent": (".agent", "RAGAgent"),
-    "ReactAgent": (".agent", "ReactAgent"),
-    "RouterAgent": (".agent", "RouterAgent"),
-    "create_handoff_tool": (".tools", "create_handoff_tool"),
-    "is_handoff_tool": (".tools", "is_handoff_tool"),
+_TOOL_EXPORTS = {
+    "create_handoff_tool",
+    "fetch_url",
+    "file_read",
+    "file_search",
+    "file_write",
+    "google_web_search",
+    "is_handoff_tool",
+    "make_agent_memory_tool",
+    "make_user_memory_tool",
+    "memory_tool",
+    "safe_calculator",
+    "vertex_ai_search",
 }
 
 
-def __getattr__(name: str) -> Any:
-    """Lazily expose prebuilt agents and tools."""
-    try:
-        module_name, attribute_name = _LAZY_EXPORTS[name]
-    except KeyError as exc:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
+def __getattr__(name: str) -> _Any:
+    """Load prebuilt agents and tools only when explicitly requested."""
+    if name == "agent":
+        module = _import_module(f"{__name__}.agent")
+        globals()[name] = module
+        return module
 
-    module = import_module(module_name, __name__)
-    value = module if attribute_name is None else getattr(module, attribute_name)
-    globals()[name] = value
-    return value
+    if name == "tools":
+        module = _import_module(f"{__name__}.tools")
+        globals()[name] = module
+        return module
+
+    if name in _AGENT_EXPORTS:
+        agent_module = _import_module(f"{__name__}.agent")
+        value = getattr(agent_module, name)
+        globals()[name] = value
+        return value
+
+    if name in _TOOL_EXPORTS:
+        tools_module = _import_module(f"{__name__}.tools")
+        value = getattr(tools_module, name)
+        globals()[name] = value
+        return value
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(__all__))
+__all__ = [
+    "RAGAgent",
+    "ReactAgent",
+    "RouterAgent",
+    # Agents
+    "agent",
+    # Tools
+    "create_handoff_tool",
+    "fetch_url",
+    "file_read",
+    "file_search",
+    "file_write",
+    "google_web_search",
+    "is_handoff_tool",
+    "make_agent_memory_tool",
+    "make_user_memory_tool",
+    "memory_tool",
+    "safe_calculator",
+    "tools",
+    "vertex_ai_search",
+]

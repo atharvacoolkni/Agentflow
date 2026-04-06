@@ -9,6 +9,9 @@ This package provides all persistence and media-handling infrastructure:
 
 from __future__ import annotations
 
+from importlib import import_module as _import_module
+from typing import Any as _Any
+
 # Import media first to avoid circular dependency:
 # storage → checkpointer → core.state → core.graph → utils → storage.checkpointer
 from . import checkpointer, media, store
@@ -46,11 +49,13 @@ from .media import (
 # --- Store (vector / long-term memory) ---
 from .store import (
     DEFAULT_COLLECTION,
+    AgentMemoryConfig,
     BaseEmbedding,
     BaseStore,
     DistanceMetric,
     GoogleEmbedding,
     Mem0Store,
+    MemoryConfig,
     MemoryIntegration,
     MemoryRecord,
     MemorySearchResult,
@@ -58,15 +63,34 @@ from .store import (
     OpenAIEmbedding,
     QdrantStore,
     ReadMode,
+    UserMemoryConfig,
     create_cloud_qdrant_store,
     create_local_qdrant_store,
     create_mem0_store,
     create_mem0_store_with_qdrant,
     create_memory_preload_node,
     create_remote_qdrant_store,
+    get_agent_memory_system_prompt,
     get_memory_system_prompt,
-    memory_tool,
 )
+
+
+_MEMORY_TOOL_EXPORTS = {
+    "make_agent_memory_tool",
+    "make_user_memory_tool",
+    "memory_tool",
+}
+
+
+def __getattr__(name: str) -> _Any:
+    """Keep prebuilt memory tools lazy at the storage package boundary."""
+    if name in _MEMORY_TOOL_EXPORTS:
+        memory_tools = _import_module("agentflow.prebuilt.tools.memory")
+        value = getattr(memory_tools, name)
+        globals()[name] = value
+        return value
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
@@ -74,6 +98,7 @@ __all__ = [
     "DEFAULT_COLLECTION",
     # Media
     "GOOGLE_INLINE_THRESHOLD",
+    "AgentMemoryConfig",
     # Checkpointer
     "BaseCheckpointer",
     "BaseEmbedding",
@@ -91,6 +116,7 @@ __all__ = [
     "MediaProcessor",
     "MediaRefResolver",
     "Mem0Store",
+    "MemoryConfig",
     "MemoryIntegration",
     "MemoryRecord",
     "MemorySearchResult",
@@ -101,6 +127,7 @@ __all__ = [
     "ProviderMediaCache",
     "QdrantStore",
     "ReadMode",
+    "UserMemoryConfig",
     # Submodules
     "checkpointer",
     "create_cloud_qdrant_store",
@@ -113,7 +140,10 @@ __all__ = [
     "create_remote_qdrant_store",
     "enforce_file_size",
     "ensure_media_offloaded",
+    "get_agent_memory_system_prompt",
     "get_memory_system_prompt",
+    "make_agent_memory_tool",
+    "make_user_memory_tool",
     "media",
     "memory_tool",
     "sanitize_filename",

@@ -27,15 +27,16 @@ class TestAgentIntegration:
         assert isinstance(graph.nodes["agent"].func, Agent)
 
     def test_agent_with_tools_can_be_added(self):
-        """Test that Agent with tools can be added to graph."""
+        """Test that Agent with ToolNode can be added to graph."""
 
         def test_tool(query: str) -> str:
             return f"Result for {query}"
 
+        tool_node = ToolNode([test_tool])
         agent = Agent(
             model="gpt-4o-mini",
             system_prompt=[{"role": "system", "content": "You are a test assistant."}],
-            tools=[test_tool],
+            tool_node=tool_node,
         )
 
         graph = StateGraph()

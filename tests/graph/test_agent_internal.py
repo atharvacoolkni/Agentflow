@@ -21,6 +21,13 @@ import pytest
 from agentflow.core.graph.agent import Agent
 from agentflow.core.graph.tool_node import ToolNode
 from agentflow.core.state import AgentState, Message
+from agentflow.storage.store.base_store import BaseStore
+from agentflow.storage.store.memory_config import (
+    AgentMemoryConfig,
+    MemoryConfig,
+    UserMemoryConfig,
+)
+from agentflow.storage.store.store_schema import MemorySearchResult, MemoryType
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -111,6 +118,32 @@ def _make_google_agent(model: str = "gemini-2.0-flash") -> Agent:
         agent = Agent(model=model, provider="google", reasoning_config=None)
     agent.client = mock_client
     return agent
+
+
+class _FakeMemoryStore(BaseStore):
+    def __init__(self, results: list[MemorySearchResult]):
+        self.asearch_mock = AsyncMock(return_value=results)
+
+    async def astore(self, *args, **kwargs):
+        return "stored"
+
+    async def asearch(self, *args, **kwargs):
+        return await self.asearch_mock(*args, **kwargs)
+
+    async def aget(self, *args, **kwargs):
+        return None
+
+    async def aget_all(self, *args, **kwargs):
+        return []
+
+    async def aupdate(self, *args, **kwargs):
+        return None
+
+    async def adelete(self, *args, **kwargs):
+        return None
+
+    async def aforget_memory(self, *args, **kwargs):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -960,20 +993,21 @@ class TestCallGoogle:
 class TestSetupTools:
     def test_none_returns_none(self):
         agent = _make_openai_agent()
-        agent.tools = None
+        agent.tool_node = None
         assert agent._setup_tools() is None
 
     def test_tool_node_instance_returned_as_is(self):
         agent = _make_openai_agent()
         tn = ToolNode([lambda x: x])
-        agent.tools = tn
+        agent.tool_node = tn
         assert agent._setup_tools() is tn
 
-    def test_list_of_callables_converted_to_tool_node(self):
+    def test_str_sets_tool_node_name_returns_none(self):
         agent = _make_openai_agent()
-        agent.tools = [lambda x: x]
+        agent.tool_node = "TOOL"
         result = agent._setup_tools()
-        assert isinstance(result, ToolNode)
+        assert result is None
+        assert agent.tool_node_name == "TOOL"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1063,24 +1097,17 @@ class TestResolveTools:
             """A test tool."""
             return x
 
-        agent = _make_openai_agent(tools=[my_tool])
+        agent = _make_openai_agent(tool_node=ToolNode([my_tool]))
         from injectq import InjectQ
         result = await agent._resolve_tools(InjectQ.get_instance())
         assert isinstance(result, list)
         assert len(result) > 0
 
-    async def test_named_node_not_found_returns_inline_tools(self):
-        def my_tool(x: str) -> str:
-            """A test tool."""
-            return x
-
-        agent = _make_openai_agent(tools=[my_tool], tool_node_name="nonexistent_node")
+    async def test_named_node_not_found_raises(self):
+        agent = _make_openai_agent(tool_node="nonexistent_node")
         from injectq import InjectQ
-        # Should fall back to inline tools without raising
-        result = await agent._resolve_tools(InjectQ.get_instance())
-        assert isinstance(result, list)
-        # Inline tool is still returned even though named node is missing
-        assert len(result) > 0
+        with pytest.raises(RuntimeError, match="ToolNode named 'nonexistent_node' was not found"):
+            await agent._resolve_tools(InjectQ.get_instance())
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1163,9 +1190,10 @@ class TestAgentInit:
 
     # ── misc attributes ────────────────────────────────────────────────────
 
-    def test_tool_node_name_stored(self):
-        agent = _make_openai_agent(tool_node_name="my_tools")
+    def test_tool_node_str_sets_tool_node_name(self):
+        agent = _make_openai_agent(tool_node="my_tools")
         assert agent.tool_node_name == "my_tools"
+        assert agent._tool_node is None
 
     def test_extra_messages_stored(self):
         msg = Message.text_message("hi", role="user")
@@ -1176,19 +1204,78 @@ class TestAgentInit:
         agent = _make_openai_agent(trim_context=True)
         assert agent.trim_context is True
 
-    def test_tools_list_creates_internal_tool_node(self):
+    def test_tool_node_instance_stored(self):
+        tn = ToolNode([lambda x: x])
+        agent = _make_openai_agent(tool_node=tn)
+        assert agent._tool_node is tn
+        assert agent.tool_node_name is None
+
+    def test_tool_node_none_gives_none_internal_tool_node(self):
+        agent = _make_openai_agent(tool_node=None)
+        assert agent._tool_node is None
+        assert agent.tool_node_name is None
+
+    def test_memory_config_requires_existing_tool_node_for_postload(self):
+        memory = MemoryConfig(user_memory=UserMemoryConfig(user_id="u1"))
+        with pytest.raises(RuntimeError, match="Memory requires an existing ToolNode"):
+            _make_openai_agent(tool_node=None, memory=memory)
+
+    def test_memory_config_adds_tools_to_existing_tool_node(self):
+        memory = MemoryConfig(user_memory=UserMemoryConfig(user_id="u1"))
+        tool_node = ToolNode([])
+        agent = _make_openai_agent(tool_node=tool_node, memory=memory)
+
+        assert agent._tool_node is tool_node
+        assert any("user_memory_tool" in p["content"] for p in agent.system_prompt)
+        assert "user_memory_tool" in agent._tool_node._funcs
+        assert agent.get_tool_node() is agent._tool_node
+
+    def test_memory_config_preserves_existing_tools(self):
         def my_tool(x: str) -> str:
-            """tool."""
             return x
 
-        agent = _make_openai_agent(tools=[my_tool])
-        assert isinstance(agent._tool_node, ToolNode)
+        memory = MemoryConfig(
+            user_memory=UserMemoryConfig(),
+            agent_memory=AgentMemoryConfig(enabled=True, agent_id="agent-1"),
+        )
+        agent = _make_openai_agent(tool_node=ToolNode([my_tool]), memory=memory)
 
-    def test_tools_none_gives_none_internal_tool_node(self):
-        agent = _make_openai_agent(tools=None)
+        assert agent._tool_node is not None
+        assert set(agent._tool_node._funcs) == {
+            "my_tool",
+            "user_memory_tool",
+            "agent_memory_tool",
+        }
+
+    @pytest.mark.asyncio
+    async def test_preload_memory_does_not_register_tools_and_builds_prompt(self):
+        store = _FakeMemoryStore(
+            [
+                MemorySearchResult(
+                    id="m1",
+                    content="User prefers concise answers",
+                    score=0.91,
+                    memory_type=MemoryType.SEMANTIC,
+                )
+            ]
+        )
+        memory = MemoryConfig(
+            retrieval_mode="preload",
+            user_memory=UserMemoryConfig(store=store, user_id="u1", memory_type="semantic"),
+        )
+        agent = _make_openai_agent(tool_node=None, memory=memory)
+
         assert agent._tool_node is None
+        assert not any("user_memory_tool" in p["content"] for p in agent.system_prompt)
 
-    def test_tools_tool_node_instance_reused(self):
-        tn = ToolNode([lambda x: x])
-        agent = _make_openai_agent(tools=tn)
-        assert agent._tool_node is tn
+        prompts = await agent._build_memory_prompts(
+            AgentState(context=[Message.text_message("What do I like?", role="user")]),
+            {"user_id": "runtime-user", "thread_id": "runtime-thread"},
+        )
+
+        assert len(prompts) == 1
+        assert prompts[0]["role"] == "system"
+        assert "Long-term Memory Context" in prompts[0]["content"]
+        assert "User prefers concise answers" in prompts[0]["content"]
+        store.asearch_mock.assert_awaited_once()
+        assert store.asearch_mock.call_args.args[0] == {"user_id": "u1"}

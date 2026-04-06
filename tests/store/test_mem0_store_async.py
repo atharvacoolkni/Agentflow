@@ -14,9 +14,19 @@ class MockAsyncMem0:
     def __init__(self):
         self.items = []  # list[dict]
         self._id = 1
+        self.add_calls = []
 
-    async def add(self, messages, user_id, agent_id=None, run_id=None, metadata=None, **kwargs):
+    async def add(self, messages, user_id, agent_id=None, metadata=None, **kwargs):
         """Mock AsyncMemory.add method"""
+        self.add_calls.append(
+            {
+                "messages": messages,
+                "user_id": user_id,
+                "agent_id": agent_id,
+                "metadata": metadata,
+                "kwargs": kwargs,
+            }
+        )
         text = messages[0]["content"] if messages else ""
         metadata = metadata or {}
         mem0_id = f"m{self._id}"
@@ -32,7 +42,6 @@ class MockAsyncMem0:
             }, 
             "user_id": user_id, 
             "score": 0.9,
-            "run_id": run_id,
             "agent_id": agent_id
         }
         self.items.append(rec)
@@ -102,17 +111,27 @@ def store():
 
 @pytest.mark.asyncio
 async def test_store_and_search(store):
-    # Provide both user_id and thread_id as required by _extract_ids
-    config = {"user_id": "u1", "thread_id": "t1"}
+    config = {"user_id": "u1"}
     mem_id = await store.astore(config, "Alice likes tea", memory_type=MemoryType.SEMANTIC)
     assert mem_id
     results = await store.asearch(config, "likes")
     assert results and results[0].content.startswith("Alice")
+    assert "run_id" not in store._client.add_calls[-1]["kwargs"]
+
+
+@pytest.mark.asyncio
+async def test_store_ignores_thread_id_in_config(store):
+    config = {"user_id": "u1", "thread_id": "t1"}
+    mem_id = await store.astore(config, "Alice likes coffee", memory_type=MemoryType.SEMANTIC)
+    assert mem_id
+    results = await store.asearch(config, "coffee")
+    assert results and results[0].content.startswith("Alice")
+    assert "run_id" not in store._client.add_calls[-1]["kwargs"]
 
 
 @pytest.mark.asyncio
 async def test_get_update_delete(store):
-    config = {"user_id": "u1", "thread_id": "t1"}
+    config = {"user_id": "u1"}
     mem_id = await store.astore(config, "Berlin is in Germany")
     got = await store.aget(config, mem_id["results"][0]["id"])  # Use actual returned ID
     assert got and got.content.startswith("Berlin")
@@ -128,7 +147,7 @@ async def test_get_update_delete(store):
 
 @pytest.mark.asyncio
 async def test_batch_and_forget(store):
-    config = {"user_id": "u1", "thread_id": "t1"}
+    config = {"user_id": "u1"}
     # Note: batch_store is not implemented in the current Mem0Store, so let's test individual stores
     await store.astore(config, "A")
     await store.astore(config, "B")

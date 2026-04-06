@@ -28,31 +28,29 @@ class AgentExecutionMixin:
     """Execution flow, tool resolution, and provider dispatch helpers."""
 
     def _setup_tools(self) -> ToolNode | None:
-        """Normalize the tools input to a ToolNode instance."""
-        if self.tools is None:
-            logger.debug("No tools provided")
+        """Normalize the tool_node input and wire internal state.
+
+        - ``ToolNode`` → stored as ``self._tool_node``; ``tool_node_name`` remains ``None``.
+        - ``str``     → stored as ``self.tool_node_name`` for lazy lookup via the DI
+                        container at execution time; returns ``None``.
+        - ``None``    → no tools; both attributes remain ``None``.
+        """
+        tn = self.tool_node  # str | ToolNode | None
+        if tn is None:
+            logger.debug("No tool_node provided")
             return None
 
-        if isinstance(self.tools, ToolNode):
-            logger.debug("Tools already a ToolNode instance")
-            return self.tools
+        if isinstance(tn, str):
+            logger.debug("tool_node is a named graph-node reference: '%s'", tn)
+            self.tool_node_name = tn
+            return None
 
-        logger.debug("Converting %d tool functions to ToolNode", len(self.tools))
-        return ToolNode(self.tools)
+        logger.debug("tool_node is a ToolNode instance")
+        return tn
 
     def get_tool_node(self) -> ToolNode | None:
-        """Return the agent's internal ToolNode.
-
-        Use this public method instead of accessing ``agent._tool_node``
-        directly when wiring the tool node into the graph. When skills are
-        enabled, the returned ToolNode already contains the ``set_skill`` tool.
-
-        Example::
-
-            agent = Agent(model="gpt-4o", tools=[my_tool], skills=SkillConfig(...))
-            graph.add_node("TOOL", agent.get_tool_node())
-        """
-        return self._tool_node
+        """Return the agent-owned ``ToolNode`` when one is configured."""
+        return getattr(self, "_tool_node", None)
 
     async def _trim_context(
         self,
@@ -305,6 +303,9 @@ class AgentExecutionMixin:
         if hasattr(self, "_build_skill_prompts") and callable(self._build_skill_prompts):
             effective_system_prompt = self._build_skill_prompts(state, self.system_prompt)
 
+        if hasattr(self, "_build_memory_prompts") and callable(self._build_memory_prompts):
+            effective_system_prompt.extend(await self._build_memory_prompts(state, config))
+
         messages = convert_messages(
             system_prompts=effective_system_prompt,
             state=state,
@@ -499,15 +500,25 @@ class AgentExecutionMixin:
 
         try:
             node = container.call_factory("get_node", self.tool_node_name)
-        except (KeyError, DependencyNotFoundError):
-            logger.warning(
-                "ToolNode with name '%s' not found in InjectQ registry.",
-                self.tool_node_name,
-            )
-            return tools
+        except (KeyError, DependencyNotFoundError) as exc:
+            raise RuntimeError(
+                f"ToolNode named '{self.tool_node_name}' was not found in the compiled graph. "
+                "Register the named ToolNode in the graph before executing the Agent."
+            ) from exc
 
-        if node and isinstance(node.func, ToolNode):
-            return await node.func.all_tools(tags=self.tools_tags)
+        if node is None:
+            raise RuntimeError(
+                f"ToolNode named '{self.tool_node_name}' was not found in the compiled graph. "
+                "Register the named ToolNode in the graph before executing the Agent."
+            )
+
+        if not isinstance(node.func, ToolNode):
+            raise RuntimeError(
+                f"Graph node '{self.tool_node_name}' is not a ToolNode. "
+                "Pass a ToolNode instance or register the proper graph node."
+            )
+
+        tools.extend(await node.func.all_tools(tags=self.tools_tags))
         return tools
 
     def _extract_prompt(self, messages: list[dict[Any, Any]]) -> str:

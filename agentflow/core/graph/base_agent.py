@@ -7,10 +7,12 @@ Agent and TestAgent seamlessly for testability.
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from agentflow.core.graph.tool_node.base import ToolNode
+
+if TYPE_CHECKING:
+    from agentflow.core.graph.tool_node.base import ToolNode
+
 from agentflow.core.state import AgentState
 from agentflow.core.state.message import Message
 
@@ -31,7 +33,7 @@ class BaseAgent(ABC):
     Attributes:
         model: LLM model identifier
         system_prompt: System prompt configuration
-        tools: Optional tool configuration
+        tool_node: ToolNode instance or named graph-node reference (str)
         kwargs: Additional configuration parameters
 
     Example:
@@ -49,8 +51,7 @@ class BaseAgent(ABC):
         model: str,
         provider: str | None = None,
         system_prompt: list[dict[str, Any]] | None = None,
-        tools: list[Callable] | ToolNode | None = None,
-        tool_node_name: str | None = None,
+        tool_node: "str | ToolNode | None" = None,
         extra_messages: list[Message] | None = None,
         client: Any = None,  # Escape hatch: allow custom client
         base_url: str | None = None,  # For OpenAI-compatible APIs (ollama, vllm, etc.)
@@ -63,12 +64,13 @@ class BaseAgent(ABC):
         Args:
             model: LLM model identifier (e.g., "gpt-4", "gemini/gemini-2.0-flash")
             system_prompt: System prompt as list of message dicts
-            tools: Optional list of tools or tool configuration
+            tool_node: ToolNode instance, or a string naming an existing graph node
+                whose ``func`` is a ToolNode.  Pass ``None`` for no tools.
             **kwargs: Additional LLM or agent configuration parameters
         """
         self.model = model
         self.system_prompt = system_prompt or []
-        self.tools = tools
+        self.tool_node = tool_node
         self.llm_kwargs = llm_kwargs
 
     @abstractmethod
@@ -119,7 +121,8 @@ class BaseAgent(ABC):
 
         Example::
 
-            agent = Agent(model="gpt-4o", tools=[my_tool])
+            tool_node = ToolNode([my_tool])
+            agent = Agent(model="gpt-4o", tool_node=tool_node)
             graph.add_node("TOOL", agent.get_tool_node())
         """
         return None

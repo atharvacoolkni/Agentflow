@@ -35,7 +35,7 @@ graph.add_node(
                 "content": "You are a helpful assistant, Help user queries effectively.",
             }
         ],
-        tool_node_name="TOOL",
+        tool_node="TOOL",
     ),
 )
 graph.add_node("TOOL", tool_node)

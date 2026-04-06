@@ -21,7 +21,7 @@ Streaming path (``streaming=True``):
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from a2a.server.agent_execution import AgentExecutor
 from a2a.server.agent_execution.context import RequestContext
@@ -29,7 +29,9 @@ from a2a.server.events.event_queue import EventQueue
 from a2a.server.tasks.task_updater import TaskUpdater
 from a2a.types import TaskState, TextPart
 
-from agentflow.core.graph.compiled_graph import CompiledGraph
+
+if TYPE_CHECKING:
+    from agentflow.core.graph.compiled_graph import CompiledGraph
 from agentflow.core.state.message import Message as AFMessage
 from agentflow.core.state.stream_chunks import StreamEvent
 from agentflow.utils.constants import ResponseGranularity

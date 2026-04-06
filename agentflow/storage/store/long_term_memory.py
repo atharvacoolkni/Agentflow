@@ -56,19 +56,17 @@ Lower-level helpers (advanced / backwards-compatible)
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal
 
-from injectq import Inject, InjectQ
+from injectq import InjectQ
 
 from agentflow.core.state import AgentState, Message
 from agentflow.storage.store.base_store import BaseStore
 from agentflow.storage.store.store_schema import MemorySearchResult, MemoryType
 from agentflow.utils.background_task_manager import BackgroundTaskManager
-from agentflow.utils.decorators import tool
 
 
 if TYPE_CHECKING:
@@ -80,7 +78,7 @@ logger = logging.getLogger("agentflow.store.long_term_memory")
 _VALID_MEMORY_TYPES = {m.value for m in MemoryType}
 
 
-class ReadMode(str, Enum):
+class ReadMode(StrEnum):
     NO_RETRIEVAL = "no_retrieval"
     PRELOAD = "preload"
     POSTLOAD = "postload"
@@ -304,105 +302,49 @@ async def _do_write(
     return {"error": f"unknown write action: {action}"}
 
 
-# ---------------------------------------------------------------------------
-# memory_tool - the LLM-callable tool
-# ---------------------------------------------------------------------------
+def get_agent_memory_system_prompt(memory_config: Any) -> str:
+    """Build the system prompt fragment for ``Agent(memory=...)``."""
+    lines: list[str] = ["[Long-term Memory]"]
 
-
-@tool(
-    name="memory_tool",
-    description=(
-        "Search, store, update or delete long-term memories. "
-        "Use action='search' with a query to recall relevant memories. "
-        "Use action='store' with content and a short snake_case memory_key "
-        "(e.g. 'user_name', 'favorite_language') to save new memories. "
-        "The system uses memory_key to detect duplicates — if a memory with the "
-        "same key already exists it will be updated automatically. "
-        "Use action='delete' with memory_id to remove memories."
-    ),
-    tags=["memory", "long_term_memory"],
-)
-async def memory_tool(  # noqa: PLR0911, PLR0913
-    action: Literal["search", "store", "update", "delete"] = "search",
-    content: str = "",
-    memory_key: str = "",
-    memory_id: str = "",
-    query: str = "",
-    memory_type: str | None = None,
-    category: str | None = None,
-    metadata: dict[str, Any] | None = None,
-    limit: int = 5,
-    score_threshold: float | None = None,
-    write_mode: Literal["merge", "replace"] = "merge",
-    # Injectable params (excluded from LLM schema automatically)
-    config: dict[str, Any] | None = None,
-    store: BaseStore | None = Inject[BaseStore],
-    task_manager: BackgroundTaskManager = Inject[BackgroundTaskManager],
-) -> str:
-    """Search, store, update, or delete long-term memories."""
-    if store is None:
-        return json.dumps({"error": "no memory store configured"})
-
-    cfg = config or {}
-    # Resolve memory_type and category from config if not explicitly provided.
-    resolved_memory_type = memory_type or cfg.get("memory_type", "episodic")
-    resolved_category = category or cfg.get("category", "general")
-    mem_type = _validate_memory_type(resolved_memory_type)
-
-    # Inject memory_key into metadata so _do_write can find it.
-    if memory_key:
-        metadata = {**(metadata or {}), "memory_key": memory_key}
-
-    # --- Validation ---
-    if action == "search" and not query:
-        return json.dumps({"error": "query is required for search"})
-    if action == "store" and not content:
-        return json.dumps({"error": "content is required for store"})
-    if action == "update" and not memory_id:
-        return json.dumps({"error": "memory_id is required for update"})
-    if action == "update" and not content:
-        return json.dumps({"error": "content is required for update"})
-    if action == "delete" and not memory_id:
-        return json.dumps({"error": "memory_id is required for delete"})
-
-    try:
-        # --- Read ---
-        if action == "search":
-            # Flush any in-flight background writes so the search sees the
-            # latest data (e.g. writes scheduled during a previous query).
-            await _flush_pending_writes(task_manager)
-
-            # Search across ALL threads for the user — long-term memory
-            # is not scoped to a single conversation thread.
-            results = await store.asearch(
-                _strip_thread_id(cfg),
-                query,
-                memory_type=mem_type,
-                limit=limit,
-                score_threshold=score_threshold,
-            )
-            return json.dumps(_format_search_results(results))
-
-        # --- Write (always async / background) ---
-        task_manager.create_task(
-            _do_write(
-                store,
-                cfg,
-                action,
-                content,
-                memory_id,
-                mem_type,
-                resolved_category,
-                metadata,
-                write_mode,
-            ),
-            name=f"memory_{action}_{memory_id or 'new'}",
+    if memory_config.retrieval_mode == ReadMode.PRELOAD:
+        lines.extend(
+            [
+                "Relevant long-term memories may be provided as system context before "
+                "the user message.",
+                "Use the provided memory context when it is relevant, but do not assume "
+                "it is exhaustive.",
+            ]
         )
-        return json.dumps({"status": "scheduled", "action": action})
+        return "\n".join(lines)
 
-    except Exception as e:
-        logger.exception("memory_tool error (action=%s): %s", action, e)
-        return json.dumps({"error": str(e)})
+    if memory_config.retrieval_mode != ReadMode.POSTLOAD:
+        lines.append("Long-term memory retrieval tools are not available in this mode.")
+        return "\n".join(lines)
+
+    if memory_config.user_memory and memory_config.user_memory.enabled:
+        lines.extend(
+            [
+                "You have access to user_memory_tool for user-specific long-term memory.",
+                "- To recall durable user facts, call user_memory_tool with "
+                "action='search' and text.",
+                "- To save useful user facts or preferences, call user_memory_tool with "
+                "action='remember' and text.",
+                "- Do not invent memory identifiers; the memory layer manages identity "
+                "and deduplication.",
+            ]
+        )
+
+    if memory_config.agent_memory and memory_config.agent_memory.enabled:
+        lines.extend(
+            [
+                "You have access to agent_memory_tool for read-only agent/app memory.",
+                "- To recall agent-level context, call agent_memory_tool with query.",
+                "- Agent memory is read-only in this agent flow; do not attempt to write, "
+                "update, or delete it.",
+            ]
+        )
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -688,6 +630,10 @@ class MemoryIntegration:
         All modes include ``memory_tool`` so the LLM can always decide to
         write.  In *postload* mode the LLM also uses it for reads.
         """
+        # Lazy import avoids a circular dependency:
+        # prebuilt.tools.memory → storage.store.long_term_memory
+        from agentflow.prebuilt.tools.memory import memory_tool
+
         return [memory_tool]
 
     @property

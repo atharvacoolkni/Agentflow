@@ -141,7 +141,7 @@ agent = Agent(
         },
         {"role": "user", "content": "Today Date is 2024-06-15"},
     ],
-    tool_node_name="TOOL",
+    tool_node="TOOL",
     trim_context=True,
     reasoning_config=True,
 )

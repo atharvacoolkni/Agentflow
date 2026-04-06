@@ -5,8 +5,7 @@ implementation lives in smaller internal modules under ``agentflow.graph.agent_i
 """
 
 import logging
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agentflow.core.graph.base_agent import BaseAgent
 from agentflow.core.graph.tool_node import ToolNode
@@ -17,9 +16,14 @@ from agentflow.storage.media.config import MultimodalConfig
 from .agent_internal.constants import DEFAULT_RETRY_CONFIG, REASONING_DEFAULT, RetryConfig
 from .agent_internal.execution import AgentExecutionMixin
 from .agent_internal.google import AgentGoogleMixin
+from .agent_internal.memory import AgentMemoryMixin
 from .agent_internal.openai import AgentOpenAIMixin
 from .agent_internal.providers import AgentProviderMixin
 from .agent_internal.skills import AgentSkillsMixin
+
+
+if TYPE_CHECKING:
+    from agentflow.storage.store.memory_config import MemoryConfig
 
 
 logger = logging.getLogger("agentflow.agent")
@@ -31,6 +35,7 @@ class Agent(
     AgentOpenAIMixin,
     AgentProviderMixin,
     AgentSkillsMixin,
+    AgentMemoryMixin,
     BaseAgent,
 ):
     """A smart node function wrapper for LLM interactions.
@@ -47,26 +52,27 @@ class Agent(
 
     Example:
         ```python
-        # Create an agent node with OpenAI
+        # Create an agent node with a ToolNode
+        tool_node = ToolNode([weather_tool])
         agent = Agent(
             model="gpt-4o",
             provider="openai",
-            system_prompt="You are a helpful assistant",
-            tools=[weather_tool],
+            system_prompt=[{"role": "system", "content": "You are a helpful assistant"}],
+            tool_node=tool_node,
         )
 
         # Use it in a graph
         graph = StateGraph()
-        graph.add_node("MAIN", agent)  # Agent acts as a node function
-        graph.add_node("TOOL", agent.get_tool_node())
-        # ... setup edges
+        graph.add_node("MAIN", agent)
+        graph.add_node("TOOL", tool_node)
+        # ... setup conditional edges
         ```
 
     Attributes:
         model: Model identifier (e.g., "gpt-4o", "gemini-2.0-flash")
         provider: Provider name ("openai", "google")
         system_prompt: System prompt string or list of message dicts
-        tools: List of tool functions or ToolNode instance
+        tool_node: ToolNode instance or name of an existing TOOL graph node (str)
         client: Optional custom client instance (escape hatch for power users)
         temperature: LLM sampling temperature
         max_tokens: Maximum tokens to generate
@@ -77,16 +83,16 @@ class Agent(
         self,
         model: str,
         provider: str | None = None,
-        output_type: str = "text",  # NEW: Explicit output type
+        output_type: str = "text",
         system_prompt: list[dict[str, Any]] | None = None,
-        tools: list[Callable] | ToolNode | None = None,
-        tool_node_name: str | None = None,
+        tool_node: "str | ToolNode | None" = None,
         extra_messages: list[Message] | None = None,
         trim_context: bool = False,
         tools_tags: set[str] | None = None,
         api_style: str = "chat",
         reasoning_config: dict[str, Any] | bool | None = REASONING_DEFAULT,  # type: ignore
         skills: "SkillConfig | None" = None,
+        memory: "MemoryConfig | None" = None,
         retry_config: RetryConfig | bool | None = True,
         fallback_models: list[str | tuple[str, str]] | None = None,
         multimodal_config: MultimodalConfig | None = None,
@@ -121,18 +127,30 @@ class Agent(
                         }]
                     )
                     # At runtime, placeholders are replaced with state values
-            tools: List of tool functions, ToolNode instance, or None.
-                If list is provided, will be converted to ToolNode internally.
-            tool_node_name: Name of the existing ToolNode. You can send list of tools
-                or provide ToolNode instance via `tools` parameter instead.
+            tool_node: A ``ToolNode`` instance containing the tools this agent may call,
+                **or** a ``str`` naming an existing graph node whose ``func`` is a
+                ``ToolNode`` (resolved at execution time via the DI container).
+                Pass ``None`` when the agent needs no tools.
+
+                Examples::
+
+                    # Inline ToolNode — agent owns the tools
+                    tool_node = ToolNode([get_weather, search])
+                    agent = Agent(model="gpt-4o", tool_node=tool_node)
+
+                    # Named reference — ToolNode lives as a separate graph node
+                    agent = Agent(model="gpt-4o", tool_node="TOOL")
+
             extra_messages: Additional messages to include in every interaction.
             trim_context: Whether to trim context using context manager.
             tools_tags: Optional tags to filter tools.
             base_url (via **kwargs): Optional base URL for OpenAI-compatible APIs
                 (ollama, vllm, openrouter, deepseek, etc.). Default: ``None``.
-            api_style (via **kwargs): API style for OpenAI provider. ``"chat"`` uses
+            api_style: API style for OpenAI provider. ``"chat"`` uses
                 Chat Completions, ``"responses"`` uses the Responses API.
                 Default: ``"chat"``.
+            memory: Optional ``MemoryConfig`` enabling agent-level long-term
+                memory tools and system prompts.
             reasoning_config: Unified reasoning control for all providers. Default
                 is ``{"effort": "medium"}`` (on). Pass ``None`` to turn off.
                 ``effort`` applies to both providers; ``summary`` is OpenAI-only;
@@ -176,35 +194,27 @@ class Agent(
 
         Example:
             ```python
-            # Text generation (default - no need to specify output_type)
+            # Text generation with inline ToolNode
+            tool_node = ToolNode([weather_tool, calculator])
             text_agent = Agent(
                 model="openai/gpt-4o",
-                system_prompt="You are a helpful assistant",
-                tools=[weather_tool, calculator],
+                system_prompt=[{"role": "system", "content": "You are a helpful assistant"}],
+                tool_node=tool_node,
                 temperature=0.8,
             )
 
-            # Image generation (explicit)
+            # Text generation with named ToolNode in graph
+            agent = Agent(
+                model="google/gemini-2.5-flash",
+                tool_node="TOOL",  # references graph node named "TOOL"
+            )
+
+            # No tools
+            agent = Agent(model="gpt-4o")
+
+            # Image generation
             image_agent = Agent(
                 model="openai/dall-e-3",
-                output_type="image",
-            )
-
-            # Video generation (explicit)
-            video_agent = Agent(
-                model="google/veo-2.0",
-                provider="google",
-                output_type="video",
-            )
-
-            # Multi-modal workflow (Google ADK style)
-            prompt_agent = Agent(
-                model="google/gemini-2.0-flash-exp",
-                system_prompt="Generate detailed image prompts",
-            )
-
-            imagen_agent = Agent(
-                model="google/imagen-3.0-generate-001",
                 output_type="image",
             )
 
@@ -215,30 +225,27 @@ class Agent(
                 base_url="https://api.qwen.com/v1",
             )
 
-            ollama_agent = Agent(
-                model="llama3:70b",
-                provider="openai",
-                base_url="http://localhost:11434/v1",
-            )
-
             # With retry and fallback
             resilient_agent = Agent(
                 model="gemini-2.5-flash",
                 provider="google",
                 retry_config=RetryConfig(max_retries=5, initial_delay=2.0),
                 fallback_models=[
-                    "gemini-2.0-flash",  # same provider
-                    ("gpt-4o-mini", "openai"),  # cross-provider fallback
+                    "gemini-2.0-flash",
+                    ("gpt-4o-mini", "openai"),
                 ],
             )
             ```
         """
         # Pop kwargs-only params before passing to parent
         base_url: str | None = kwargs.pop("base_url", None)
-        # Note: api_style is already a named parameter, don't pop from kwargs
         # Call parent constructor
         super().__init__(
-            model=model, system_prompt=system_prompt or [], tools=tools, base_url=base_url, **kwargs
+            model=model,
+            system_prompt=system_prompt or [],
+            tool_node=tool_node,
+            base_url=base_url,
+            **kwargs,
         )
 
         # check user sending model and provider as prefix, if provider is not explicitly provided
@@ -267,7 +274,7 @@ class Agent(
         self.extra_messages = extra_messages
         self.trim_context = trim_context
         self.tools_tags = tools_tags
-        self.tool_node_name = tool_node_name
+        self.tool_node_name = None  # may be set to a str by _setup_tools()
 
         # Internal setup
         self._tool_node = self._setup_tools()
@@ -306,6 +313,10 @@ class Agent(
             f"Agent initialized: model={model}, provider={self.provider}, "
             f"output_type={self.output_type}, has_tools={self._tool_node is not None}"
         )
+
+        # Memory setup (via mixin) runs before skills so a memory-only Agent can
+        # lazily create the internal ToolNode that both systems append to.
+        self._setup_memory(memory)
 
         # Skills setup (via mixin)
         self._setup_skills(skills)
