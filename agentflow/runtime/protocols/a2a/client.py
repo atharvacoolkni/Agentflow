@@ -15,25 +15,31 @@ from __future__ import annotations
 
 import logging
 import uuid
+from importlib import import_module
 from typing import Any
-
-import httpx
-from a2a.client import A2AClient
-from a2a.types import (
-    Message as A2AMessage,
-)
-from a2a.types import (
-    MessageSendParams,
-    Role,
-    SendMessageRequest,
-    TextPart,
-)
 
 from agentflow.core.state.agent_state import AgentState
 from agentflow.core.state.message import Message as AFMessage
 
+from ._optional import A2A_EXTRA_INSTALL_HINT, get_a2a_attr, import_a2a_module
+
 
 logger = logging.getLogger("agentflow.a2a")
+
+
+def _import_client_dependencies():
+    """Load client-only optional dependencies when an A2A call is made."""
+    feature = "A2A client helpers"
+    try:
+        httpx = import_module("httpx")
+    except Exception as exc:
+        raise RuntimeError(
+            f"{feature} requires the optional 'httpx' package. {A2A_EXTRA_INSTALL_HINT}"
+        ) from exc
+
+    a2a_client = get_a2a_attr("a2a.client", "A2AClient", feature)
+    a2a_types = import_a2a_module("a2a.types", feature)
+    return httpx, a2a_client, a2a_types
 
 
 # ---------------------------------------------------------------------- #
@@ -64,17 +70,19 @@ async def delegate_to_a2a_agent(
     Raises:
         RuntimeError: If the agent returns an error or no text parts.
     """
-    async with httpx.AsyncClient(timeout=timeout) as http:
-        client = A2AClient(httpx_client=http, url=url)
+    httpx, a2a_client, a2a_types = _import_client_dependencies()
 
-        request = SendMessageRequest(
+    async with httpx.AsyncClient(timeout=timeout) as http:
+        client = a2a_client(httpx_client=http, url=url)
+
+        request = a2a_types.SendMessageRequest(
             id=str(uuid.uuid4()),
-            params=MessageSendParams(
-                message=A2AMessage(
-                    role=Role.user,
+            params=a2a_types.MessageSendParams(
+                message=a2a_types.Message(
+                    role=a2a_types.Role.user,
                     message_id=str(uuid.uuid4()),
                     context_id=context_id,
-                    parts=[TextPart(text=text)],
+                    parts=[a2a_types.TextPart(text=text)],
                 ),
             ),
         )
@@ -165,11 +173,21 @@ def create_a2a_client_node(
     async def _a2a_node(state: AgentState, config: dict) -> list[AFMessage]:
         # Get text from the last message in the conversation
         if not state.context:
-            return [AFMessage.text_message("No input provided.", role=response_role)]
+            return [
+                AFMessage.text_message(
+                    "No input provided.",
+                    role=response_role,
+                ),
+            ]
 
         user_text = state.context[-1].text()
         if not user_text:
-            return [AFMessage.text_message("Empty input.", role=response_role)]
+            return [
+                AFMessage.text_message(
+                    "Empty input.",
+                    role=response_role,
+                ),
+            ]
 
         # Reuse the parent graph's thread_id as context_id so the remote
         # A2A agent stays in the same session as the whole workflow.
@@ -183,9 +201,19 @@ def create_a2a_client_node(
             )
         except Exception as exc:
             logger.exception("A2A client node failed for url=%s", url)
-            return [AFMessage.text_message(f"A2A call failed: {exc!s}", role=response_role)]
+            return [
+                AFMessage.text_message(
+                    f"A2A call failed: {exc!s}",
+                    role=response_role,
+                ),
+            ]
 
-        return [AFMessage.text_message(response, role=response_role)]
+        return [
+            AFMessage.text_message(
+                response,
+                role=response_role,
+            ),
+        ]
 
     # Give the function a useful name for debugging / graph visualization
     _a2a_node.__name__ = f"a2a_client_node({url})"

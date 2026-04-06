@@ -23,18 +23,33 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from a2a.server.agent_execution import AgentExecutor
-from a2a.server.agent_execution.context import RequestContext
-from a2a.server.events.event_queue import EventQueue
-from a2a.server.tasks.task_updater import TaskUpdater
-from a2a.types import TaskState, TextPart
+from agentflow.core.state.message import Message as AFMessage
+from agentflow.core.state.stream_chunks import StreamEvent
+from agentflow.utils.constants import ResponseGranularity
+
+from ._optional import missing_a2a_sdk_error
 
 
 if TYPE_CHECKING:
     from agentflow.core.graph.compiled_graph import CompiledGraph
-from agentflow.core.state.message import Message as AFMessage
-from agentflow.core.state.stream_chunks import StreamEvent
-from agentflow.utils.constants import ResponseGranularity
+
+
+try:
+    from a2a.server.agent_execution import AgentExecutor as _AgentExecutor
+    from a2a.server.agent_execution.context import RequestContext
+    from a2a.server.events.event_queue import EventQueue
+    from a2a.server.tasks.task_updater import TaskUpdater
+    from a2a.types import TaskState, TextPart
+except Exception as exc:
+    _A2A_IMPORT_ERROR: BaseException | None = exc
+
+    class _AgentExecutor:
+        """Fallback base class used when a2a-sdk is not installed."""
+
+else:
+    _A2A_IMPORT_ERROR = None
+
+AgentExecutor = _AgentExecutor
 
 
 logger = logging.getLogger("agentflow.a2a")
@@ -60,6 +75,11 @@ class AgentFlowExecutor(AgentExecutor):
         config: dict[str, Any] | None = None,
         streaming: bool = False,
     ) -> None:
+        if _A2A_IMPORT_ERROR is not None:
+            raise missing_a2a_sdk_error("AgentFlowExecutor", _A2A_IMPORT_ERROR) from (
+                _A2A_IMPORT_ERROR
+            )
+
         self.graph = compiled_graph
         self._base_config = config or {}
         self._streaming = streaming

@@ -14,19 +14,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from a2a.server.apps import A2AStarletteApplication
-from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryTaskStore
-from a2a.types import (
-    AgentCapabilities,
-    AgentCard,
-    AgentSkill,
-)
-
-from .executor import AgentFlowExecutor
+from ._optional import A2A_EXTRA_INSTALL_HINT, import_a2a_module
 
 
 if TYPE_CHECKING:
+    from a2a.types import AgentCard, AgentSkill
     from starlette.applications import Starlette
 
     from agentflow.core.graph.compiled_graph import CompiledGraph
@@ -62,9 +54,11 @@ def make_agent_card(
     Returns:
         A fully populated ``AgentCard``.
     """
+    a2a_types = import_a2a_module("a2a.types", "make_agent_card")
+
     if skills is None:
         skills = [
-            AgentSkill(
+            a2a_types.AgentSkill(
                 id="run_graph",
                 name="Run Graph",
                 description="Execute the agentflow graph",
@@ -72,12 +66,12 @@ def make_agent_card(
             )
         ]
 
-    return AgentCard(
+    return a2a_types.AgentCard(
         name=name,
         description=description,
         url=url,
         version=version,
-        capabilities=AgentCapabilities(streaming=streaming),
+        capabilities=a2a_types.AgentCapabilities(streaming=streaming),
         default_input_modes=["text"],
         default_output_modes=["text"],
         skills=skills,
@@ -112,16 +106,22 @@ def build_a2a_app(
     Returns:
         A ``Starlette`` application ready to be served.
     """
+    a2a_apps = import_a2a_module("a2a.server.apps", "build_a2a_app")
+    request_handlers = import_a2a_module("a2a.server.request_handlers", "build_a2a_app")
+    tasks = import_a2a_module("a2a.server.tasks", "build_a2a_app")
+
+    from .executor import AgentFlowExecutor
+
     executor = AgentFlowExecutor(
         compiled_graph,
         config=executor_config,
         streaming=streaming,
     )
-    handler = DefaultRequestHandler(
+    handler = request_handlers.DefaultRequestHandler(
         agent_executor=executor,
-        task_store=InMemoryTaskStore(),
+        task_store=tasks.InMemoryTaskStore(),
     )
-    a2a_app = A2AStarletteApplication(
+    a2a_app = a2a_apps.A2AStarletteApplication(
         agent_card=agent_card,
         http_handler=handler,
     )
@@ -155,7 +155,13 @@ def create_a2a_server(
         streaming: Whether to use ``astream`` in the executor.
         executor_config: Optional base config forwarded to the graph.
     """
-    import uvicorn
+    try:
+        uvicorn = __import__("uvicorn")
+    except Exception as exc:
+        raise RuntimeError(
+            "create_a2a_server requires the optional 'uvicorn' package. "
+            f"{A2A_EXTRA_INSTALL_HINT}"
+        ) from exc
 
     app = build_a2a_app(
         compiled_graph,
