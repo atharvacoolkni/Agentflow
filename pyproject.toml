@@ -253,5 +253,6 @@ dev = [
     "langchain-community>=0.3.29",
     "mem0ai>=0.1.117",
     "google-genai>=1.56.0",
+    "a2a_sdk",
 ]
 
