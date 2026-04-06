@@ -7,7 +7,7 @@ This package provides the runtime infrastructure for agent execution:
 - ``agentflow.runtime.protocols``  - agent communication protocol packages
 """
 
-from . import adapters, publisher
+from . import adapters, protocols, publisher
 from .adapters.llm import (
     BaseConverter,
     ConverterType,
@@ -16,6 +16,15 @@ from .adapters.llm import (
     OpenAIResponsesConverter,
 )
 from .adapters.tools import ComposioAdapter, LangChainAdapter
+from .protocols import (
+    AgentFlowExecutor,
+    a2a,
+    build_a2a_app,
+    create_a2a_client_node,
+    create_a2a_server,
+    delegate_to_a2a_agent,
+    make_agent_card,
+)
 from .publisher import (
     BasePublisher,
     ConsolePublisher,
@@ -30,15 +39,17 @@ from .publisher import (
 )
 
 
-def __getattr__(name: str):
-    if name == "protocols":
-        import importlib
-
-        return importlib.import_module("agentflow.runtime.protocols")
-    raise AttributeError(name)
+# "a2a",
+# "build_a2a_app",
+# "create_a2a_client_node",
+# "create_a2a_server",
+# "delegate_to_a2a_agent",
+# "make_agent_card",
 
 
 __all__ = [
+    "AgentFlowExecutor",
+    # Adapters
     "BaseConverter",
     "BasePublisher",
     "ComposioAdapter",
@@ -55,7 +66,15 @@ __all__ = [
     "OpenAIResponsesConverter",
     "RabbitMQPublisher",
     "RedisPublisher",
+    "a2a",
     "adapters",
+    "build_a2a_app",
+    "create_a2a_client_node",
+    "create_a2a_server",
+    "delegate_to_a2a_agent",
+    "make_agent_card",
+    # Protocols
+    "protocols",
     "protocols",
     "publish_event",
     "publisher",

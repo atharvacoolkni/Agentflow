@@ -46,12 +46,12 @@ from .media import (
 # --- Store (vector / long-term memory) ---
 from .store import (
     DEFAULT_COLLECTION,
+    AgentMemoryConfig,
     BaseEmbedding,
     BaseStore,
     DistanceMetric,
     GoogleEmbedding,
     Mem0Store,
-    AgentMemoryConfig,
     MemoryConfig,
     MemoryIntegration,
     MemoryRecord,
@@ -80,6 +80,7 @@ __all__ = [
     "DEFAULT_COLLECTION",
     # Media
     "GOOGLE_INLINE_THRESHOLD",
+    "AgentMemoryConfig",
     # Checkpointer
     "BaseCheckpointer",
     "BaseEmbedding",
@@ -97,7 +98,6 @@ __all__ = [
     "MediaProcessor",
     "MediaRefResolver",
     "Mem0Store",
-    "AgentMemoryConfig",
     "MemoryConfig",
     "MemoryIntegration",
     "MemoryRecord",
@@ -122,8 +122,8 @@ __all__ = [
     "create_remote_qdrant_store",
     "enforce_file_size",
     "ensure_media_offloaded",
-    "get_memory_system_prompt",
     "get_agent_memory_system_prompt",
+    "get_memory_system_prompt",
     "make_agent_memory_tool",
     "make_user_memory_tool",
     "media",

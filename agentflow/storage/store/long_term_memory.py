@@ -67,7 +67,6 @@ from agentflow.core.state import AgentState, Message
 from agentflow.storage.store.base_store import BaseStore
 from agentflow.storage.store.store_schema import MemorySearchResult, MemoryType
 from agentflow.utils.background_task_manager import BackgroundTaskManager
-from agentflow.utils.decorators import tool
 
 
 if TYPE_CHECKING:
@@ -627,7 +626,7 @@ class MemoryIntegration:
         """
         # Lazy import avoids a circular dependency:
         # prebuilt.tools.memory → storage.store.long_term_memory
-        from agentflow.prebuilt.tools.memory import memory_tool  # noqa: PLC0415
+        from agentflow.prebuilt.tools.memory import memory_tool
 
         return [memory_tool]
 

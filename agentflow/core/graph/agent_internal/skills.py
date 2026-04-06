@@ -38,9 +38,9 @@ class AgentSkillsMixin:
         if skills is None:
             return
 
+        from agentflow.core.skills.activation import make_set_skill_tool
         from agentflow.core.skills.models import SkillConfig
         from agentflow.core.skills.registry import SkillsRegistry
-        from agentflow.core.skills.activation import make_set_skill_tool
 
         if not isinstance(skills, SkillConfig):
             raise TypeError(f"Expected SkillConfig, got {type(skills)}")
