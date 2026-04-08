@@ -8,8 +8,7 @@ from typing import Any
 
 
 A2A_EXTRA_INSTALL_HINT = (
-    "Install it with 'pip install 10xscale-agentflow[a2a_sdk]' "
-    "or 'pip install a2a-sdk'."
+    "Install it with 'pip install 10xscale-agentflow[a2a_sdk]' " "or 'pip install a2a-sdk'."
 )
 
 

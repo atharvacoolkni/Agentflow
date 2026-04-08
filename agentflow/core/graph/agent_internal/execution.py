@@ -328,15 +328,14 @@ class AgentExecutionMixin:
 
         is_stream = config.get("is_stream", False)
 
-        if state.context and state.context[-1].role == "tool":
-            response = await self._call_llm_with_retry(messages=messages, stream=is_stream)
-        else:
-            tools = await self._resolve_tools(container)
-            response = await self._call_llm_with_retry(
-                messages=messages,
-                tools=tools if tools else None,
-                stream=is_stream,
-            )
+        # Always resolve tools - even after tool results, the model may want to call
+        # additional tools (e.g., Gemini 2.5+ with sequential tool calls)
+        tools = await self._resolve_tools(container)
+        response = await self._call_llm_with_retry(
+            messages=messages,
+            tools=tools if tools else None,
+            stream=is_stream,
+        )
 
         converter_key = self._get_converter_key()
         return ModelResponseConverter(response, converter=converter_key)
